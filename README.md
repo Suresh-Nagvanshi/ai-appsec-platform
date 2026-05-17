@@ -4,217 +4,311 @@ AI-powered Application Security (AppSec) platform designed to combine traditiona
 
 ---
 
-# Vision
+## Vision
 
-Modern security scanners produce thousands of alerts, many of which are:
+Traditional security tools often generate large volumes of findings:
 
-- false positives
-- duplicate findings
-- low-priority issues
-- difficult to triage
+- False positives
+- Duplicate issues
+- Low-priority alerts
+- Difficult remediation paths
 
-The goal of this platform is to transform raw scanner output into:
+The goal of this platform is to transform raw scanner outputs into:
 
-- contextual findings
-- exploitability-aware analysis
+- Contextual findings
+- Exploitability-aware analysis
 - AI-assisted remediation
-- actionable security intelligence
+- Actionable security intelligence
 
-Instead of acting like a traditional scanner, this system aims to function as an AI-assisted security engineer.
+The long-term objective is to function as an AI-assisted security engineer rather than a simple scanner.
 
 ---
 
-# Core Objectives
+## Core Objectives
 
 - Reduce alert fatigue
 - Improve vulnerability prioritization
 - Provide AI-generated contextual reasoning
-- Enable secure multi-tenant usage
-- Support repository, web application, API, and AI/ML security testing
+- Support secure multi-tenant architecture
+- Enable repository, web application, API, and AI/ML security testing
 - Build an enterprise-grade AppSec workflow platform
 
 ---
 
-# Current Architecture
+## Current Architecture
 
 ```text
-Repository / Upload / URL
-            ↓
-      Security Scanner Layer
-            ↓
-     Findings Normalization
-            ↓
-    Context Enrichment Layer
-        ├─ Framework Detection
-        ├─ Endpoint Extraction
-        ├─ Snippet Extraction
-        └─ Context Builder
-            ↓
-      Risk Scoring Engine
-            ↓
-        AI Analysis Layer
-        ├─ Prompt Builder
-        ├─ Model Router
-        ├─ Response Parser
-        └─ Analysis Engine
-            ↓
-      Deduplication Layer
-            ↓
-      Findings Repository
-            ↓
-      Reporting Layer
-            ↓
-Dashboard / API / Reports
+Repository / ZIP Upload / GitHub URL / Website URL
+                        ↓
+                Security Scanner Layer
+                        ↓
+              Findings Normalization
+                        ↓
+              Context Enrichment Layer
+            ├── Framework Detection
+            ├── Endpoint Extraction
+            ├── Snippet Extraction
+            └── Context Builder
+                        ↓
+                 Risk Scoring Engine
+                        ↓
+                  AI Analysis Layer
+            ├── Prompt Builder
+            ├── Model Router
+            ├── Response Parser
+            └── Analysis Engine
+                        ↓
+               Deduplication Layer
+                        ↓
+                Findings Repository
+                        ↓
+                  Reporting Layer
+                        ↓
+          Dashboard / APIs / Reports
+```
 
-Technology Stack
-Backend
-Python
-FastAPI
-Groq LLM API
-JSON storage (temporary)
+---
+
+## Technology Stack
+
+### Backend
+
+- Python
+- FastAPI
+- Groq API
+- JSON storage (temporary)
+
 Future:
-PostgreSQL
-Docker
-Prisma ORM
-Frontend
-Next.js
-TypeScript
-Tailwind CSS
-React Query
-AI / Security
-Semgrep
-OWASP references
-MITRE ATT&CK mappings
-CVE datasets
-AI reasoning engine
-Implemented Features
-AI Analysis
-Prompt Builder
-Response Parser
-Analysis Engine
-Batch Analysis
-Async Analysis
-Model Router
-Enrichment
-Framework Detection
-Endpoint Extraction
-Snippet Extraction
-Context Builder
-Security Processing
-Risk Scoring
-Findings Repository
-Finding Deduplication
-Diff Analysis
-Report Generation
-Backend
-FastAPI application
-Findings API endpoint
-Scan storage architecture
-Frontend
-Dashboard UI
-Findings workflow interface
-Security posture chart
-React Query integration
-Backend integration
-In Progress
-PostgreSQL integration
-Docker setup
-Authentication
-RBAC
-Multi-tenant isolation
-Planned Features
-Repository Scanning
-GitHub repository scanning
-ZIP upload scanning
-Branch selection
-Incremental scanning
-Web Security
-Website URL scanner
-Crawling engine
-Page discovery
-Client-side vulnerability analysis
-API Security
-Endpoint discovery
-API endpoint tester
-Authentication testing
-Authorization testing
-OWASP API Top 10 mapping
-AI/ML Security Testing
-Prompt injection testing
-Jailbreak testing
-Hallucination detection
-Model behavior evaluation
-Safety assessment
-Adversarial testing
-Intelligence Layer
-Optional anonymized telemetry
-RAG-based security knowledge system
-Similar vulnerability detection
-Enterprise Features
-Organization support
-Team management
-RBAC
-Audit logs
-CI/CD integrations
-Webhooks
-Multi-Tenant Security Principles
-Tenant isolation
-Organization-level access control
-RBAC
-Data segregation
-Secure storage practices
-Privacy Principles
+
+- PostgreSQL
+- Docker
+- Prisma ORM
+
+### Frontend
+
+- Next.js
+- TypeScript
+- Tailwind CSS
+- React Query
+
+### AI / Security
+
+- Semgrep
+- OWASP references
+- MITRE ATT&CK mappings
+- CVE datasets
+- AI reasoning engine
+
+---
+
+## Current Project Status
+
+**Current Phase**
+
+Foundation + AI analysis infrastructure + frontend dashboard architecture
+
+**Status**
+
+Actively under development
+
+---
+
+## Implemented Features
+
+### AI Layer
+
+- Prompt Builder
+- Response Parser
+- Analysis Engine
+- Async Analysis Engine
+- Batch Analysis Engine
+- Model Router
+
+### Context Enrichment
+
+- Framework Detection
+- Endpoint Extraction
+- Snippet Extraction
+- Context Builder
+
+### Security Processing
+
+- Risk Scoring
+- Finding Deduplication
+- Findings Repository
+- Diff Analyzer
+- Report Generation
+
+### Backend
+
+- FastAPI application
+- Findings API endpoint
+- Scan storage architecture
+
+### Frontend
+
+- Dashboard UI
+- Findings workflow interface
+- Security posture visualization
+- React Query integration
+- Backend integration
+
+---
+
+## In Progress
+
+- PostgreSQL integration
+- Docker setup
+- Authentication
+- RBAC
+- Multi-tenant isolation
+
+---
+
+## Planned Features
+
+### Repository Security
+
+- GitHub repository URL scanner
+- ZIP upload scanner enhancements
+- Branch selection
+- Incremental scanning
+
+### Website Security
+
+- Website URL scanner
+- Crawling engine
+- Page discovery
+- Client-side vulnerability analysis
+
+### API Security
+
+- Endpoint discovery
+- API endpoint tester
+- Authentication testing
+- Authorization testing
+- OWASP API Top 10 mapping
+
+### AI/ML Security Testing
+
+- Prompt injection testing
+- Jailbreak testing
+- Hallucination detection
+- Model behavior evaluation
+- Safety assessment
+- Adversarial testing
+
+### Intelligence Layer
+
+- Optional anonymized telemetry
+- RAG-based security knowledge system
+- Similar vulnerability detection
+
+### Enterprise Features
+
+- Organization support
+- Team management
+- RBAC
+- Audit logs
+- CI/CD integrations
+- Webhooks
+
+---
+
+## Multi-Tenant Security Principles
+
+- Tenant isolation
+- Organization-level access control
+- RBAC
+- Data segregation
+- Secure storage practices
+
+---
+
+## Privacy Principles
 
 Customer source code and security findings are sensitive.
 
 Planned approach:
 
-Optional anonymized telemetry only:
-
-"Customers may optionally allow anonymized security telemetry to improve detection quality and AI reasoning."
+> Customers may optionally allow anonymized security telemetry to improve detection quality and AI reasoning.
 
 Important constraints:
 
-optional
-anonymized
-telemetry only
-no raw code sharing
-Project Status
+- Optional
+- Anonymized
+- Telemetry only
+- No raw code sharing
 
-Current phase:
+---
 
-Foundation + AI analysis infrastructure + frontend dashboard architecture
+## Future Roadmap
 
-Status:
+### Phase 1
 
-Actively under development
+- Core scanning pipeline
+- AI analysis engine
+- Dashboard foundation
 
-Future Roadmap
+### Phase 2
 
-Phase 1
+- Repository scanning
+- Website scanning
+- API security testing
 
-Core scanning
-AI analysis
-Dashboard
+### Phase 3
 
-Phase 2
+- AI/ML security testing
 
-Repository scanning
-URL scanning
-API testing
+### Phase 4
 
-Phase 3
+- Enterprise deployment
+- RBAC
+- Multi-tenancy
+- CI/CD integrations
 
-AI/ML security testing
+---
 
-Phase 4
+## Local Setup
 
-Enterprise deployment
-RBAC
-Multi-tenancy
-CI/CD integrations
-Contributors
+### Clone Repository
 
-Currently maintained by:
+```bash
+git clone https://github.com/<username>/ai-appsec-platform.git
+cd ai-appsec-platform
+```
 
-Suresh Nagvanshi
+### Backend
+
+```bash
+pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend:
+
+```text
+http://localhost:3000
+```
+
+Backend:
+
+```text
+http://127.0.0.1:8000
+```
+
+---
+
+## Contributors
+
+Maintained by:
+
+**Suresh Nagvanshi**
