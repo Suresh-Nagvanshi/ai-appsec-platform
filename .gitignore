@@ -1,0 +1,156 @@
+##################################################
+# ENVIRONMENT / SECRETS
+##################################################
+
+.env
+.env.*
+!.env.example
+
+*.key
+*.pem
+*.crt
+*.secret
+
+##################################################
+# PYTHON
+##################################################
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+*.egg-info/
+dist/
+build/
+
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+.venv/
+venv/
+env/
+
+##################################################
+# NODE / NEXT
+##################################################
+
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+*.tsbuildinfo
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+##################################################
+# IDE / OS
+##################################################
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
+
+##################################################
+# GENERATED SECURITY DATA
+##################################################
+
+uploads/*
+!uploads/.gitkeep
+
+extracted/*
+!extracted/.gitkeep
+
+repos/*
+!repos/.gitkeep
+
+results/*
+!results/.gitkeep
+
+reports/*
+!reports/.gitkeep
+
+##################################################
+# DATABASE STORAGE
+##################################################
+
+backend/database/findings/*
+!backend/database/findings/.gitkeep
+
+backend/database/scans/*
+!backend/database/scans/.gitkeep
+
+##################################################
+# SCAN OUTPUTS
+##################################################
+
+data/semgrep/output.json
+data/semgrep/parsed_results.json
+
+data/ai_report.json
+data/correlation_output.json
+
+##################################################
+# LARGE DATASETS
+##################################################
+
+external/*
+!external/.gitkeep
+
+data/benchmark/*
+!data/benchmark/.gitkeep
+
+##################################################
+# LOCAL DATABASES
+##################################################
+
+*.db
+*.sqlite
+*.sqlite3
+
+##################################################
+# DOCKER
+##################################################
+
+docker-data/
+postgres-data/
+
+##################################################
+# FUTURE PRISMA
+##################################################
+
+frontend/prisma/dev.db
+frontend/prisma/*.db
+
+##################################################
+# LOG FILES
+##################################################
+
+*.log
+
+##################################################
+# TEMP FILES
+##################################################
+
+tmp/
+temp/
+
+##################################################
+# SECURITY
+##################################################
+
+*.zip
+*.tar
+*.gz
+
+##################################################
+# KEEP FOLDER STRUCTURE
+##################################################
+
+!.gitkeep

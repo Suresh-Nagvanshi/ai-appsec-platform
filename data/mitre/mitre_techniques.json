@@ -1,0 +1,122 @@
+[
+    {
+        "id": "T1190",
+        "name": "Exploit Public-Facing Application",
+        "description": "Adversaries exploit vulnerabilities in internet-facing applications such as web servers, APIs, or databases to gain initial access.",
+        "tactic": "Initial Access"
+    },
+    {
+        "id": "T1059",
+        "name": "Command and Scripting Interpreter",
+        "description": "Attackers execute malicious commands through interpreters like shell, Python, or PowerShell to control systems.",
+        "tactic": "Execution"
+    },
+    {
+        "id": "T1110",
+        "name": "Brute Force",
+        "description": "Adversaries attempt to gain access by trying multiple passwords or credentials until successful.",
+        "tactic": "Credential Access"
+    },
+    {
+        "id": "T1078",
+        "name": "Valid Accounts",
+        "description": "Attackers use stolen or legitimate credentials to gain unauthorized access to systems.",
+        "tactic": "Persistence"
+    },
+    {
+        "id": "T1189",
+        "name": "Drive-by Compromise",
+        "description": "Users are compromised simply by visiting a malicious or vulnerable website.",
+        "tactic": "Initial Access"
+    },
+    {
+        "id": "T1203",
+        "name": "Exploitation for Client Execution",
+        "description": "Attackers exploit vulnerabilities in client-side software like browsers or plugins to execute code.",
+        "tactic": "Execution"
+    },
+    {
+        "id": "T1046",
+        "name": "Network Service Discovery",
+        "description": "Adversaries scan networks to discover services running on remote systems.",
+        "tactic": "Discovery"
+    },
+    {
+        "id": "T1210",
+        "name": "Exploitation of Remote Services",
+        "description": "Attackers exploit vulnerabilities in remote services to gain unauthorized access.",
+        "tactic": "Lateral Movement"
+    },
+    {
+        "id": "T1595",
+        "name": "Active Scanning",
+        "description": "Attackers actively scan targets to identify vulnerabilities and open ports.",
+        "tactic": "Reconnaissance"
+    },
+    {
+        "id": "T1195",
+        "name": "Supply Chain Compromise",
+        "description": "Adversaries compromise software supply chains to distribute malicious code.",
+        "tactic": "Initial Access"
+    },
+    {
+        "id": "T1003",
+        "name": "Credential Dumping",
+        "description": "Attackers extract credentials from operating systems or applications.",
+        "tactic": "Credential Access"
+    },
+    {
+        "id": "T1566",
+        "name": "Phishing",
+        "description": "Adversaries trick users into revealing credentials or executing malicious files.",
+        "tactic": "Initial Access"
+    },
+    {
+        "id": "T1071",
+        "name": "Application Layer Protocol",
+        "description": "Attackers use common protocols like HTTP/HTTPS to communicate with compromised systems.",
+        "tactic": "Command and Control"
+    },
+    {
+        "id": "T1027",
+        "name": "Obfuscated Files or Information",
+        "description": "Adversaries obfuscate malicious code to evade detection.",
+        "tactic": "Defense Evasion"
+    },
+    {
+        "id": "T1055",
+        "name": "Process Injection",
+        "description": "Attackers inject code into legitimate processes to execute malicious actions.",
+        "tactic": "Defense Evasion"
+    },
+    {
+        "id": "T1083",
+        "name": "File and Directory Discovery",
+        "description": "Adversaries search for files and directories to identify sensitive data.",
+        "tactic": "Discovery"
+    },
+    {
+        "id": "T1041",
+        "name": "Exfiltration Over C2 Channel",
+        "description": "Attackers steal data by sending it over command and control channels.",
+        "tactic": "Exfiltration"
+    },
+    {
+        "id": "T1499",
+        "name": "Endpoint Denial of Service",
+        "description": "Adversaries disrupt services by overwhelming systems with traffic or requests.",
+        "tactic": "Impact"
+    },
+    {
+        "id": "T1555",
+        "name": "Credentials from Password Stores",
+        "description": "Attackers extract credentials stored in browsers or applications.",
+        "tactic": "Credential Access"
+    },
+    {
+        "id": "T1608",
+        "name": "Stage Capabilities",
+        "description": "Adversaries prepare infrastructure and payloads before launching attacks.",
+        "tactic": "Resource Development"
+    }
+]
