@@ -1,10 +1,8 @@
-﻿from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api.scans import router as scans_router
 from backend.ai_service import analyze_vulnerability
-from backend.routes.findings import (
-router as findings_router
-)
+from backend.routes.findings import router as findings_router
 
 import shutil
 import zipfile
@@ -17,38 +15,38 @@ from pathlib import Path
 from git import Repo
 
 # UTF-8 Fix
-
 os.environ["PYTHONUTF8"] = "1"
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
 app = FastAPI(
-title="AI Security Agent Backend",
-version="1.0.0"
+    title="AI Security Agent Backend",
+    version="1.0.0"
 )
+
 app.include_router(
     scans_router,
     prefix="/api/scans",
     tags=["Scans"]
 )
 
-# Register Routers
-
 app.include_router(findings_router)
 
 # CORS
-
+# allow_origins=["*"] + allow_credentials=True is spec-invalid and rejected
+# by browsers. Use explicit origins and credentials=False for MVP.
 app.add_middleware(
-CORSMiddleware,
-allow_origins=["*"],
-allow_credentials=True,
-allow_methods=["*"],
-allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
 
 # Base Directory
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 UPLOAD_DIR = BASE_DIR / "uploads"
 EXTRACT_DIR = BASE_DIR / "extracted"
 RESULT_DIR = BASE_DIR / "results"
@@ -58,6 +56,8 @@ EXTRACT_DIR.mkdir(exist_ok=True)
 RESULT_DIR.mkdir(exist_ok=True)
 REPO_DIR = BASE_DIR / "repos"
 REPO_DIR.mkdir(exist_ok=True)
+
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 
 @app.get("/")
@@ -70,49 +70,49 @@ def home():
 
 @app.post("/scan/file")
 async def scan_file(file: UploadFile = File(...)):
+    # ── File size guard (read first chunk to estimate) ──────────────────
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload exceeds maximum allowed size of {MAX_UPLOAD_BYTES // (1024*1024)} MB"
+        )
+
+    # ── Safe filename (strip directory components) ───────────────────────
+    safe_name = Path(file.filename).name
+    if not safe_name.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip files are accepted")
+
+    zip_path = UPLOAD_DIR / safe_name
+    project_name = safe_name.replace(".zip", "")
+    extract_path = EXTRACT_DIR / project_name
+
     try:
-        # =========================
-        # Save ZIP File
-        # =========================
-        zip_path = UPLOAD_DIR / file.filename
-        with open(zip_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Write bytes already read into memory
+        zip_path.write_bytes(content)
 
-        # =========================
-        # Extract ZIP
-        # =========================
-        project_name = file.filename.replace(".zip", "")
-        extract_path = EXTRACT_DIR / project_name
+        # ── ZIP path traversal guard (Zip Slip) ─────────────────────────
         extract_path.mkdir(exist_ok=True)
-
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            for member in zip_ref.namelist():
+                member_path = (extract_path / member).resolve()
+                if not str(member_path).startswith(str(extract_path.resolve())):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unsafe ZIP entry detected: {member}"
+                    )
             zip_ref.extractall(extract_path)
 
-        # =========================
-        # Result File
-        # =========================
         result_file = RESULT_DIR / f"{project_name}_results.json"
 
-        # =========================
-        # Semgrep Command
-        # =========================
         command = [
-            sys.executable,
-            "-m",
-            "semgrep",
+            sys.executable, "-m", "semgrep",
             "--config=auto",
             str(extract_path),
             "--json",
-            "--output",
-            str(result_file)
+            "--output", str(result_file)
         ]
 
-        print("\nRunning Semgrep...")
-        print(" ".join(command))
-
-        # =========================
-        # Run Semgrep
-        # =========================
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
@@ -128,14 +128,6 @@ async def scan_file(file: UploadFile = File(...)):
             timeout=600
         )
 
-        print("\n===== STDOUT =====")
-        print(result.stdout)
-        print("\n===== STDERR =====")
-        print(result.stderr)
-
-        # =========================
-        # Verify Result File
-        # =========================
         if not result_file.exists():
             return {
                 "status": "error",
@@ -143,70 +135,53 @@ async def scan_file(file: UploadFile = File(...)):
                 "stderr": result.stderr
             }
 
-        # =========================
-        # Load Results
-        # =========================
         with open(result_file, "r", encoding="utf-8") as f:
             semgrep_results = json.load(f)
 
-        findings = len(semgrep_results.get("results", []))
+        findings_count = len(semgrep_results.get("results", []))
 
         return {
             "status": "success",
             "project": project_name,
-            "findings": findings,
+            "findings": findings_count,
             "results_file": str(result_file),
             "results": semgrep_results.get("results", [])
         }
 
-    except subprocess.TimeoutExpired as e:
-        return {
-            "status": "error",
-            "message": "Semgrep scan timed out after 600 seconds",
-            "stderr": str(e)
-        }
-
+    except HTTPException:
+        raise
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": "Semgrep scan timed out after 600 seconds"}
     except zipfile.BadZipFile:
         return {"status": "error", "message": "Invalid ZIP file"}
-
     except Exception as e:
         return {"status": "error", "message": str(e)}
-    
-    
+    finally:
+        # Clean up extracted files after scan to prevent disk accumulation
+        if extract_path.exists():
+            shutil.rmtree(extract_path, ignore_errors=True)
+        if zip_path.exists():
+            zip_path.unlink(missing_ok=True)
+
+
 @app.post("/scan/analyze")
 async def analyze_scan_results(project_name: str):
     try:
-        # =========================
-        # Locate Semgrep Results
-        # =========================
         result_file = RESULT_DIR / f"{project_name}_results.json"
 
         if not result_file.exists():
-            return {
-                "status": "error",
-                "message": "Result file not found"
-            }
+            return {"status": "error", "message": "Result file not found"}
 
-        # =========================
-        # Load Semgrep JSON
-        # =========================
         with open(result_file, "r", encoding="utf-8") as f:
             semgrep_results = json.load(f)
 
         findings = semgrep_results.get("results", [])
 
         if not findings:
-            return {
-                "status": "success",
-                "message": "No vulnerabilities found",
-                "analysis": []
-            }
+            return {"status": "success", "message": "No vulnerabilities found", "analysis": []}
 
         analyzed_results = []
 
-        # =========================
-        # AI Analysis Loop
-        # =========================
         for finding in findings:
             vulnerability_data = {
                 "rule_id": finding.get("check_id"),
@@ -218,11 +193,7 @@ async def analyze_scan_results(project_name: str):
             }
 
             ai_response = analyze_vulnerability(vulnerability_data)
-
-            analyzed_results.append({
-                "finding": vulnerability_data,
-                "ai_analysis": ai_response
-            })
+            analyzed_results.append({"finding": vulnerability_data, "ai_analysis": ai_response})
 
         return {
             "status": "success",
@@ -232,60 +203,45 @@ async def analyze_scan_results(project_name: str):
         }
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+        return {"status": "error", "message": str(e)}
+
 
 @app.post("/scan/github")
 async def scan_github_repo(repo_url: str):
+    # ── SSRF guard: only allow public GitHub HTTPS URLs ──────────────────
+    if not repo_url.startswith("https://github.com/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only public GitHub HTTPS repository URLs are accepted (https://github.com/...)"
+        )
+
     try:
-        # =========================
-        # Extract Repo Name
-        # =========================
-        repo_name = repo_url.split("/")[-1].replace(".git", "")
+        repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
+        if not repo_name:
+            raise HTTPException(status_code=400, detail="Could not derive repository name from URL")
+
         repo_path = REPO_DIR / repo_name
         result_file = RESULT_DIR / f"{repo_name}_github_results.json"
 
-        # =========================
-        # Delete Old Repo If Exists
-        # =========================
         if repo_path.exists():
             try:
                 shutil.rmtree(repo_path)
             except PermissionError:
                 return {
                     "status": "error",
-                    "message": "Repository folder is currently locked. Close any open files/folders or restart server and try again."
+                    "message": "Repository folder is locked. Restart server and try again."
                 }
 
-        # =========================
-        # Clone Repository
-        # =========================
-        print(f"\nCloning repository: {repo_url}")
         Repo.clone_from(repo_url, repo_path)
-        print("Repository cloned successfully.")
 
-        # =========================
-        # Semgrep Command
-        # =========================
         command = [
-            sys.executable,
-            "-m",
-            "semgrep",
+            sys.executable, "-m", "semgrep",
             "--config=auto",
             str(repo_path),
             "--json",
-            "--output",
-            str(result_file)
+            "--output", str(result_file)
         ]
 
-        print("\nRunning Semgrep on GitHub repo...")
-        print(" ".join(command))
-
-        # =========================
-        # Run Semgrep
-        # =========================
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
@@ -301,14 +257,6 @@ async def scan_github_repo(repo_url: str):
             timeout=600
         )
 
-        print("\n===== STDOUT =====")
-        print(result.stdout)
-        print("\n===== STDERR =====")
-        print(result.stderr)
-
-        # =========================
-        # Verify Results
-        # =========================
         if not result_file.exists():
             return {
                 "status": "error",
@@ -316,75 +264,48 @@ async def scan_github_repo(repo_url: str):
                 "stderr": result.stderr
             }
 
-        # =========================
-        # Load Results
-        # =========================
         with open(result_file, "r", encoding="utf-8") as f:
             semgrep_results = json.load(f)
 
-        findings = len(semgrep_results.get("results", []))
+        findings_count = len(semgrep_results.get("results", []))
 
         return {
             "status": "success",
             "repository": repo_name,
-            "findings": findings,
+            "findings": findings_count,
             "results_file": str(result_file),
             "results": semgrep_results.get("results", [])
         }
 
-    except subprocess.TimeoutExpired as e:
-        return {
-            "status": "error",
-            "message": "Semgrep scan timed out after 600 seconds",
-            "stderr": str(e)
-        }
-
+    except HTTPException:
+        raise
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": "Semgrep scan timed out after 600 seconds"}
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+        return {"status": "error", "message": str(e)}
 
 
 @app.post("/report/generate")
 async def generate_report(project_name: str):
     try:
-        # =========================
-        # Locate Semgrep Result File
-        # =========================
         result_file = RESULT_DIR / f"{project_name}_results.json"
 
-        # GitHub fallback
         if not result_file.exists():
             result_file = RESULT_DIR / f"{project_name}_github_results.json"
 
         if not result_file.exists():
-            return {
-                "status": "error",
-                "message": "Result file not found"
-            }
+            return {"status": "error", "message": "Result file not found"}
 
-        # =========================
-        # Load Results
-        # =========================
         with open(result_file, "r", encoding="utf-8") as f:
             semgrep_results = json.load(f)
 
-        # Process the first five findings for the AI report to provide richer output.
         findings = semgrep_results.get("results", [])[:5]
 
         if not findings:
-            return {
-                "status": "success",
-                "message": "No vulnerabilities found",
-                "report": []
-            }
+            return {"status": "success", "message": "No vulnerabilities found", "report": []}
 
         report = []
 
-        # =========================
-        # Generate AI Report
-        # =========================
         for finding in findings:
             vulnerability_data = {
                 "rule_id": finding.get("check_id"),
@@ -396,15 +317,8 @@ async def generate_report(project_name: str):
             }
 
             ai_analysis = analyze_vulnerability(vulnerability_data)
+            report.append({"finding": vulnerability_data, "ai_report": ai_analysis})
 
-            report.append({
-                "finding": vulnerability_data,
-                "ai_report": ai_analysis
-            })
-
-        # =========================
-        # Save Report
-        # =========================
         report_file = RESULT_DIR / f"{project_name}_ai_report.json"
         with open(report_file, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=4)
@@ -418,8 +332,4 @@ async def generate_report(project_name: str):
         }
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
+        return {"status": "error", "message": str(e)}
