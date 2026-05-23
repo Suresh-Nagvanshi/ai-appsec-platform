@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
-    getRepositories
+    listRepositories
 } from "@/services/repositories.service";
 
 export function useRepositories() {
@@ -15,7 +15,7 @@ export function useRepositories() {
         ],
 
         queryFn:
-            getRepositories,
+            listRepositories,
 
     });
 

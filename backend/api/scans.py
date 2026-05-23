@@ -27,9 +27,8 @@ from backend.services.scan_orchestrator import run_github_scan, run_zip_scan
 router = APIRouter()
 
 # ── In-memory scan store ─────────────────────────────────────────────────────
-# Imported by scan_orchestrator to mutate state from the background task.
-# For a multi-worker deployment, replace with Redis or a database.
-_scans: dict = {}
+# Shared module to avoid circular imports with scan_orchestrator.
+from backend.api.scan_state import _scans
 
 _TIMELINE_STEPS = [
     {"id": "0", "name": "Initialise",         "status": "PENDING"},

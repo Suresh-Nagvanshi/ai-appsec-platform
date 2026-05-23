@@ -57,7 +57,7 @@ from backend.deduplication.finding_deduplicator import FindingDeduplicator
 from backend.storage.findings_repository import FindingsRepository
 
 # Live scan-state dict shared with the API polling endpoint
-from backend.api.scans import _scans
+from backend.api.scan_state import _scans
 
 logger = logging.getLogger(__name__)
 

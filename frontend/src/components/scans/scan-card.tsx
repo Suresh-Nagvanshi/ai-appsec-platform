@@ -4,15 +4,16 @@ import { ScanProgress } from "./scan-progress";
 
 export interface ScanCardProps {
     id: string;
-    repositoryName: string;
+    repositoryName?: string;
+    target?: string;
     scanType: string;
-    status: "RUNNING" | "COMPLETED" | "FAILED";
+    status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
     progress: number;
     findingsCount?: number;
     criticalCount?: number;
     startedAt: string;
-    duration?: string;
-    failureReason?: string;
+    duration?: string | null;
+    failureReason?: string | null;
     onView?: (id: string) => void;
     onRerun?: (id: string) => void;
 }
@@ -42,6 +43,7 @@ function statusStyles(
 export function ScanCard({
     id,
     repositoryName,
+    target,
     scanType,
     status,
     progress,
@@ -85,7 +87,7 @@ export function ScanCard({
                         text-zinc-100
                         "
                     >
-                        {repositoryName}
+                        {repositoryName || target || "Unknown"}
                     </h3>
 
                     <p

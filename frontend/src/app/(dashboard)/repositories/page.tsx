@@ -11,10 +11,10 @@ import { AddRepositoryModal } from "@/components/repositories/add-repository-mod
 import { useRepositories } from "@/hooks/use-repositories";
 
 import {
-    addRepository,
+    createRepository,
     type Repository,
 } from "@/services/repositories.service";
-import { Scan, startScan } from "@/services/scans.service";
+import { type ScanRecord, startGithubScan } from "@/services/scans.service";
 
 export default function RepositoriesPage() {
 
@@ -49,16 +49,10 @@ export default function RepositoriesPage() {
         try {
 
             const newRepository =
-                await addRepository({
-
-                    ...repositoryData,
-
-                    status:
-                        "CONNECTED",
-
-                    lastScan:
-                        "Never"
-
+                await createRepository({
+                    name: repositoryData.name,
+                    url: repositoryData.url,
+                    provider: repositoryData.provider,
                 });
 
             queryClient.setQueryData(
@@ -246,35 +240,13 @@ export default function RepositoriesPage() {
             return;
         }
 
-        const newScan =
-            await startScan({
-
-                repository:
-                    repository.name,
-
-                scanType:
-                    "Full Scan"
-
-            });
-
-        queryClient.setQueryData(
-
-            ["scans"],
-
-            (
-                oldScans:
-                Scan[] | undefined
-            ) => [
-
-                newScan,
-                ...(oldScans ?? [])
-
-            ]
-
-        );
+        const scanId =
+            await startGithubScan(
+                repository.url
+            );
 
         router.push(
-            `/scans/${newScan.id}`
+            `/scans/${scanId}`
         );
 
     }

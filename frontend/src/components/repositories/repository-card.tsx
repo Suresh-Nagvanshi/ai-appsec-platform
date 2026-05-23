@@ -26,14 +26,14 @@ function statusStyles(
 
     switch (status) {
 
-        case "CONNECTED":
+        case "active":
 
             return `
             bg-green-500/15
             text-green-400
             `;
 
-        case "DISCONNECTED":
+        case "inactive":
 
             return `
             bg-red-500/15
@@ -58,7 +58,7 @@ export function RepositoryCard({
     provider,
     status,
     url,
-    lastScan,
+    last_scan,
 
     onScan,
     onView
@@ -122,7 +122,7 @@ export function RepositoryCard({
                     )}
                     `}
                 >
-                    {status}
+                    {status === "active" ? "CONNECTED" : "DISCONNECTED"}
                 </div>
 
             </div>
@@ -160,7 +160,7 @@ export function RepositoryCard({
                     </p>
 
                     <p>
-                        {lastScan ?? "-"}
+                        {last_scan ?? "-"}
                     </p>
 
                 </div>

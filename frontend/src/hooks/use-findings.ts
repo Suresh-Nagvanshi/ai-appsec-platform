@@ -9,7 +9,7 @@ export function useFindings() {
 
         queryKey: ["findings"],
 
-        queryFn: getFindings,
+        queryFn: () => getFindings(),
 
     });
 
