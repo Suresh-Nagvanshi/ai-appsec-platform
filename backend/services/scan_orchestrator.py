@@ -123,12 +123,15 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
     Execute Semgrep on *scan_path*, write JSON to *result_file*.
     Returns the parsed Semgrep results dict.
     Raises RuntimeError on failure.
+
+    Uses the `semgrep` binary directly. The `python -m semgrep` invocation
+    was deprecated in Semgrep 1.38.0 and removed in later versions.
     """
     env = os.environ.copy()
     env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "LANG": "en_US.UTF-8"})
 
     cmd = [
-        sys.executable, "-m", "semgrep",
+        "semgrep",
         "--config=auto",
         str(scan_path),
         "--json",
