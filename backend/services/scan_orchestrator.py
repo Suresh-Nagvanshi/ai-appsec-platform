@@ -57,7 +57,7 @@ from backend.deduplication.finding_deduplicator import FindingDeduplicator
 from backend.storage.findings_repository import FindingsRepository
 
 # Live scan-state dict shared with the API polling endpoint
-from backend.api.scan_state import _scans
+from backend.api.scan_state import _scans, save_state
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,9 @@ def _update_scan(
     if extra:
         scan.update(extra)
 
+    # Persist to disk so state survives server restarts
+    save_state()
+
 
 # ── Semgrep runner (sync, called via asyncio.to_thread) ──────────────────────────────
 
@@ -127,8 +130,12 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
     Uses the `semgrep` binary directly. The `python -m semgrep` invocation
     was deprecated in Semgrep 1.38.0 and removed in later versions.
     """
+    # Use a clean env — do NOT inject PYTHONUTF8 / PYTHONIOENCODING / LANG.
+    # Semgrep ships a bundled Python interpreter; those vars corrupt it on
+    # Windows, causing "Failed to import the site module" fatal errors.
     env = os.environ.copy()
-    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "LANG": "en_US.UTF-8"})
+    for _key in ("PYTHONUTF8", "PYTHONIOENCODING", "LANG"):
+        env.pop(_key, None)
 
     cmd = [
         "semgrep",

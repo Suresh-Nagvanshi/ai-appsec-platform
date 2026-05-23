@@ -28,7 +28,7 @@ router = APIRouter()
 
 # ── In-memory scan store ─────────────────────────────────────────────────────
 # Shared module to avoid circular imports with scan_orchestrator.
-from backend.api.scan_state import _scans
+from backend.api.scan_state import _scans, save_state
 
 _TIMELINE_STEPS = [
     {"id": "0", "name": "Initialise",         "status": "PENDING"},
@@ -82,6 +82,7 @@ async def scan_github(
 
     scan = _new_scan("github", repo_url)
     _scans[scan["id"]] = scan
+    save_state()
 
     background_tasks.add_task(run_github_scan, scan["id"], repo_url)
 
@@ -116,6 +117,7 @@ async def scan_zip(
 
     scan = _new_scan("zip", safe_name)
     _scans[scan["id"]] = scan
+    save_state()
 
     background_tasks.add_task(run_zip_scan, scan["id"], zip_bytes, safe_name)
 
