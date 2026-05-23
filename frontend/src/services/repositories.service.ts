@@ -1,30 +1,36 @@
+/**
+ * Repositories service
+ * ====================
+ * Wraps all /api/repositories/* backend endpoints.
+ */
+
 import api from "@/lib/api";
 
-export type RepositoryProvider =
-    | "GitHub"
-    | "GitLab"
-    | "Bitbucket";
-
 export interface Repository {
-    id: string;
-    name: string;
-    provider: RepositoryProvider;
-    status: "CONNECTED" | "DISCONNECTED";
-    url: string;
-    lastScan?: string;
+  id: string;
+  name: string;
+  url: string;
+  provider: string;
+  status: "active" | "inactive";
+  last_scan: string | null;
+  created_at: string;
 }
 
-export async function getRepositories(): Promise<Repository[]> {
-    const response = await api.get<Repository[]>("/api/repositories");
-    return response.data;
+export async function listRepositories(): Promise<Repository[]> {
+  const res = await api.get<Repository[]>("/api/repositories");
+  return res.data;
 }
 
-export async function addRepository(
-    repository: Omit<Repository, "id">
-): Promise<Repository> {
-    const response = await api.post<Repository>(
-        "/api/repositories",
-        repository
-    );
-    return response.data;
+export async function createRepository(payload: {
+  name: string;
+  url: string;
+  provider?: string;
+}): Promise<Repository> {
+  const res = await api.post<Repository>("/api/repositories", payload);
+  return res.data;
+}
+
+export async function getRepository(repoId: string): Promise<Repository> {
+  const res = await api.get<Repository>(`/api/repositories/${repoId}`);
+  return res.data;
 }

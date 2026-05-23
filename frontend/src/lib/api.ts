@@ -1,8 +1,18 @@
+/**
+ * Centralised Axios instance.
+ * Base URL is read from the NEXT_PUBLIC_API_URL env var so
+ * both local dev (http://localhost:8000) and production deployments
+ * work without code changes.
+ */
+
 import axios from "axios";
 
-export const api = axios.create({
-baseURL: "http://127.0.0.1:8000",
-headers: {
-"Content-Type": "application/json",
-},
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  timeout: 30_000,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
+
+export default api;

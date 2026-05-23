@@ -1,55 +1,61 @@
+/**
+ * Scans service
+ * =============
+ * Wraps all /api/scans/* backend endpoints.
+ * Replaces the localStorage-based simulation.
+ */
+
 import api from "@/lib/api";
 
-export type ScanStatus =
-    | "RUNNING"
-    | "COMPLETED"
-    | "FAILED"
-    | "QUEUED";
-
-export interface Scan {
-    id: string;
-    repositoryName: string;
-    scanType: string;
-    status: ScanStatus;
-    progress: number;
-    findingsCount?: number;
-    criticalCount?: number;
-    startedAt: string;
-    duration?: string;
-    failureReason?: string;
+export interface ScanRecord {
+  id: string;
+  scanType: "github" | "zip";
+  target: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  progress: number;
+  startedAt: string;
+  completedAt: string | null;
+  duration: string | null;
+  findingsCount: number;
+  criticalCount: number;
+  summary: Record<string, number>;
+  logs: Array<{ id: string; time: string; level: string; message: string }>;
+  timeline: Array<{ id: string; name: string; status: string }>;
+  failureReason: string | null;
 }
 
-export interface StartScanRequest {
-    repository: string;
-    scanType: string;
+/** Start a GitHub repository scan. Returns scan_id. */
+export async function startGithubScan(repoUrl: string): Promise<string> {
+  const form = new FormData();
+  form.append("repo_url", repoUrl);
+  const res = await api.post<{ scan_id: string; status: string }>(
+    "/api/scans/github",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return res.data.scan_id;
 }
 
-export interface StartScanResponse {
-    scan_id: string;
-    status: string;
+/** Start a ZIP upload scan. Returns scan_id. */
+export async function startZipScan(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await api.post<{ scan_id: string; status: string }>(
+    "/api/scans/zip",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return res.data.scan_id;
 }
 
-export async function getScans(): Promise<Scan[]> {
-    const response = await api.get<Scan[]>("/api/scans");
-    return response.data;
+/** Fetch a single scan record (live progress). */
+export async function getScan(scanId: string): Promise<ScanRecord> {
+  const res = await api.get<ScanRecord>(`/api/scans/${scanId}`);
+  return res.data;
 }
 
-export async function getScanById(
-    id: string
-): Promise<Scan | undefined> {
-    const response = await api.get<Scan>(`/api/scans/${id}`);
-    return response.data;
-}
-
-export async function startScan(
-    payload: StartScanRequest
-): Promise<StartScanResponse> {
-    const response = await api.post<StartScanResponse>(
-        "/api/scans/start",
-        {
-            repository_url: payload.repository,
-            scan_type: payload.scanType,
-        }
-    );
-    return response.data;
+/** List all scans, newest first. */
+export async function listScans(): Promise<ScanRecord[]> {
+  const res = await api.get<ScanRecord[]>("/api/scans");
+  return res.data;
 }
