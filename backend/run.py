@@ -11,9 +11,17 @@ Configures uvicorn with:
     don't trigger a server restart and kill the running scan mid-execution
 """
 
+import os
+import sys
+from pathlib import Path
 import uvicorn
 
 if __name__ == "__main__":
+    # Ensure the project root is in PYTHONPATH so that uvicorn worker processes
+    # spawned during hot-reloads can successfully find the 'backend' package.
+    project_root = str(Path(__file__).resolve().parent.parent)
+    existing_pythonpath = os.environ.get("PYTHONPATH", "")
+    os.environ["PYTHONPATH"] = f"{project_root};{existing_pythonpath}" if existing_pythonpath else project_root
     uvicorn.run(
         "backend.main:app",
         host="0.0.0.0",
