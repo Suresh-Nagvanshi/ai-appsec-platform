@@ -130,12 +130,10 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
     Uses the `semgrep` binary directly. The `python -m semgrep` invocation
     was deprecated in Semgrep 1.38.0 and removed in later versions.
     """
-    # Use a clean env — do NOT inject PYTHONUTF8 / PYTHONIOENCODING / LANG.
-    # Semgrep ships a bundled Python interpreter; those vars corrupt it on
-    # Windows, causing "Failed to import the site module" fatal errors.
+    # We MUST set PYTHONUTF8=1 so the pip-installed semgrep on Windows doesn't
+    # crash with cp1252 UnicodeEncodeError when downloading/writing registry rules.
     env = os.environ.copy()
-    for _key in ("PYTHONUTF8", "PYTHONIOENCODING", "LANG"):
-        env.pop(_key, None)
+    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "LANG": "en_US.UTF-8"})
 
     cmd = [
         "semgrep",
@@ -157,7 +155,7 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
 
     if not result_file.exists():
         raise RuntimeError(
-            f"Semgrep produced no output file. stderr: {result.stderr[:500]}"
+            f"Semgrep produced no output file. stderr: {result.stderr}"
         )
 
     with open(result_file, "r", encoding="utf-8") as fh:
