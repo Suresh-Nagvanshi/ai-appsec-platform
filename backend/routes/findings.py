@@ -1,131 +1,104 @@
-from fastapi import APIRouter, HTTPException
+"""
+Findings API
+============
+Endpoints:
+  GET  /findings                     — list all findings across all scans
+  GET  /findings/{finding_id}        — get a single finding by its id
+  PATCH /findings/{finding_id}/status — update finding status
 
-router = APIRouter(
-    prefix="/findings",
-    tags=["Findings"]
-)
+All data comes from FindingsRepository (JSON files in database/).
+The previous version returned 3 hardcoded mock findings — removed.
+"""
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+
+from backend.storage.findings_repository import FindingsRepository
+
+router = APIRouter()
+_repo = FindingsRepository()
+
+
+class StatusUpdate(BaseModel):
+    status: str  # open | in_progress | resolved | false_positive
 
 
 @router.get("")
-def get_findings():
+def get_findings(
+    scan_id: Optional[str] = None,
+    severity: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+):
     """
-    Temporary findings endpoint.
-
-    Later this will:
-    - fetch from PostgreSQL
-    - apply tenant isolation
-    - support pagination
-    - support filtering
-    - support RBAC
+    Return findings from FindingsRepository with optional filters.
+    Supports scan_id, severity, and status query params.
     """
+    try:
+        all_findings = _repo.get_all_findings()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Storage read error: {exc}")
 
-    return [
-        {
-            "id": "1",
-            "title": "SQL Injection vulnerability",
-            "severity": "CRITICAL",
-            "riskScore": 9.8,
-            "exploitability": "Very High",
-            "repository": "webgoat-api",
-            "filePath": "src/api/users.ts",
-            "status": "OPEN",
-            "createdAt": "2026-05-14",
-        },
-        {
-            "id": "2",
-            "title": "Hardcoded JWT secret",
-            "severity": "HIGH",
-            "riskScore": 8.1,
-            "exploitability": "High",
-            "repository": "auth-service",
-            "filePath": ".env",
-            "status": "OPEN",
-            "createdAt": "2026-05-14",
-        },
-        {
-            "id": "3",
-            "title": "Insecure deserialization",
-            "severity": "MEDIUM",
-            "riskScore": 6.5,
-            "exploitability": "Medium",
-            "repository": "payments-api",
-            "filePath": "serializers.py",
-            "status": "IN_PROGRESS",
-            "createdAt": "2026-05-13",
-        },
-    ]
+    # Filter
+    if scan_id:
+        all_findings = [f for f in all_findings if f.get("scan_id") == scan_id]
+    if severity:
+        all_findings = [
+            f for f in all_findings
+            if (f.get("severity") or "").upper() == severity.upper()
+        ]
+    if status:
+        all_findings = [
+            f for f in all_findings
+            if (f.get("status") or "open").lower() == status.lower()
+        ]
 
-mock_findings = [
-    {
-        "id":"1",
+    total = len(all_findings)
+    page = all_findings[offset : offset + limit]
 
-        "title":"SQL Injection vulnerability",
-
-        "severity":"CRITICAL",
-
-        "riskScore":9.8,
-
-        "exploitability":"Very High",
-
-        "repository":"webgoat-api",
-
-        "filePath":"src/api/users.ts",
-
-        "framework":"Spring Boot",
-
-        "status":"OPEN",
-
-        "createdAt":"2026-05-14",
-
-        "cwe":"CWE-89",
-
-        "owasp":"A03:2021 Injection",
-
-        "mitre":"T1190",
-
-        "ai_summary":
-        "Unsanitized user input reaches SQL query construction.",
-
-        "attack_scenario":
-        "An attacker can inject SQL payloads through user-controlled parameters and potentially dump or manipulate database records.",
-
-        "business_impact":
-        "Potential database compromise and unauthorized data access.",
-
-        "secure_fix":
-        "Use parameterized queries and input validation.",
-
-        "developer_steps":[
-            "Replace string concatenation",
-            "Use prepared statements",
-            "Validate input"
-        ],
-
-        "snippet":
-        """SELECT * FROM users
-WHERE id='${userInput}'"""
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "findings": page,
     }
-]
 
 
 @router.get("/{finding_id}")
-def get_finding_details(
-    finding_id: str
-):
-
-    finding = next(
-        (
-            f
-            for f in mock_findings
-            if f["id"] == finding_id
-        ),
-        None
-    )
+def get_finding(finding_id: str):
+    """Return a single finding by its id."""
+    try:
+        finding = _repo.get_finding_by_id(finding_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Storage read error: {exc}")
 
     if not finding:
-        raise HTTPException(
-            status_code=404,
-            detail="Finding not found"
-        )
+        raise HTTPException(status_code=404, detail="Finding not found")
 
     return finding
+
+
+@router.patch("/{finding_id}/status")
+def update_finding_status(finding_id: str, payload: StatusUpdate):
+    """
+    Update the status of a finding (triage workflow).
+    Valid statuses: open, in_progress, resolved, false_positive
+    """
+    valid = {"open", "in_progress", "resolved", "false_positive"}
+    if payload.status not in valid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {sorted(valid)}",
+        )
+
+    try:
+        updated = _repo.update_finding_status(finding_id, payload.status)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Storage write error: {exc}")
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    return {"ok": True, "finding_id": finding_id, "status": payload.status}

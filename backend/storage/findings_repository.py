@@ -1,304 +1,122 @@
+"""
+FindingsRepository
+==================
+Persists scan results to JSON files under database/scans/.
+Provides:
+  save_scan()           — persist a completed scan + findings
+  get_all_findings()    — flat list of all findings across all scans
+  get_finding_by_id()   — single finding lookup
+  update_finding_status() — triage status mutation
+
+Scan IDs are UUID-based (no timestamp collision risk).
+"""
+
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+from uuid import uuid4
+
+_BASE_DIR = Path(__file__).resolve().parent.parent.parent / "database" / "scans"
+_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class FindingsRepository:
-    """
-    Persistent storage layer for security findings.
 
-    Responsibilities:
-    - persist findings
-    - persist AI analyses
-    - historical tracking
-    - future diff scanning
-    - future dashboard support
-    - future RAG memory support
-
-    Storage strategy:
-    JSON-based repository storage.
-    """
-
-    def __init__(self):
-
-        self.base_path = (
-            Path(__file__)
-            .resolve()
-            .parent
-            .parent
-            / "database"
-        )
-
-        self.findings_path = (
-            self.base_path
-            / "findings"
-        )
-
-        self.scans_path = (
-            self.base_path
-            / "scans"
-        )
-
-        self._initialize_storage()
+    # ── Write ──────────────────────────────────────────────────────────────
 
     def save_scan(
         self,
         project_name: str,
-        scan_results: Dict
+        scan_results: dict,
     ) -> str:
         """
-        Save complete scan results.
-
-        Returns:
-            scan_id
+        Persist a completed scan.
+        scan_results must contain at minimum:
+          scan_id    (str)
+          results    (list of enriched finding dicts)
+          summary    (dict with severity counts)
+        Returns the storage_id (== scan_id).
         """
+        scan_id = scan_results.get("scan_id") or str(uuid4())
 
-        scan_id = self._generate_scan_id(
-            project_name
-        )
+        # Stamp every finding with scan_id + default status
+        findings = scan_results.get("results", [])
+        for i, finding in enumerate(findings):
+            finding.setdefault("id", str(uuid4()))
+            finding.setdefault("scan_id", scan_id)
+            finding.setdefault("status", "open")
+            finding.setdefault("created_at", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
 
-        scan_record = {
-
+        record = {
             "scan_id": scan_id,
-
             "project_name": project_name,
-
-            "created_at": datetime.utcnow()
-            .isoformat(),
-
-            "metadata": scan_results.get(
-                "metadata",
-                {}
-            ),
-
-            "summary": scan_results.get(
-                "summary",
-                {}
-            ),
-
-            "results": scan_results.get(
-                "results",
-                []
-            )
+            "created_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "scan_type": scan_results.get("scan_type", "unknown"),
+            "summary": scan_results.get("summary", {}),
+            "findings": findings,
         }
 
-        scan_file = (
-            self.scans_path
-            / f"{scan_id}.json"
-        )
-
-        with open(
-            scan_file,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                scan_record,
-                file,
-                indent=4
-            )
-
-        self._store_individual_findings(
-            scan_id=scan_id,
-            project_name=project_name,
-            results=scan_results.get(
-                "results",
-                []
-            )
-        )
-
+        scan_file = _BASE_DIR / f"{scan_id}.json"
+        scan_file.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
         return scan_id
 
-    def get_scan(
-        self,
-        scan_id: str
-    ) -> Optional[Dict]:
+    # ── Read ───────────────────────────────────────────────────────────────
+
+    def get_all_findings(self) -> List[dict]:
         """
-        Retrieve scan by ID.
+        Return a flat list of all findings from all scan files,
+        newest scans first.
         """
-
-        scan_file = (
-            self.scans_path
-            / f"{scan_id}.json"
-        )
-
-        if not scan_file.exists():
-            return None
-
-        with open(
-            scan_file,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            return json.load(file)
-
-    def list_scans(
-        self
-    ) -> List[Dict]:
-        """
-        List all stored scans.
-        """
-
-        scans = []
-
-        for scan_file in self.scans_path.glob(
-            "*.json"
-        ):
-
+        findings: List[dict] = []
+        for scan_file in sorted(_BASE_DIR.glob("*.json"), reverse=True):
             try:
-
-                with open(
-                    scan_file,
-                    "r",
-                    encoding="utf-8"
-                ) as file:
-
-                    data = json.load(file)
-
-                    scans.append({
-
-                        "scan_id": data.get(
-                            "scan_id"
-                        ),
-
-                        "project_name": data.get(
-                            "project_name"
-                        ),
-
-                        "created_at": data.get(
-                            "created_at"
-                        ),
-
-                        "summary": data.get(
-                            "summary",
-                            {}
-                        )
-                    })
-
+                record = json.loads(scan_file.read_text(encoding="utf-8"))
+                findings.extend(record.get("findings", []))
             except Exception:
                 continue
+        return findings
 
-        scans.sort(
-            key=lambda item: item.get(
-                "created_at",
-                ""
-            ),
-            reverse=True
-        )
+    def get_finding_by_id(self, finding_id: str) -> Optional[dict]:
+        """Search all scan files for a finding by its id field."""
+        for scan_file in _BASE_DIR.glob("*.json"):
+            try:
+                record = json.loads(scan_file.read_text(encoding="utf-8"))
+                for finding in record.get("findings", []):
+                    if finding.get("id") == finding_id:
+                        return finding
+            except Exception:
+                continue
+        return None
 
-        return scans
+    def get_scan(self, scan_id: str) -> Optional[dict]:
+        """Return the full scan record (findings + summary) by scan_id."""
+        scan_file = _BASE_DIR / f"{scan_id}.json"
+        if not scan_file.exists():
+            return None
+        try:
+            return json.loads(scan_file.read_text(encoding="utf-8"))
+        except Exception:
+            return None
 
-    def get_project_history(
-        self,
-        project_name: str
-    ) -> List[Dict]:
+    # ── Mutate ─────────────────────────────────────────────────────────────
+
+    def update_finding_status(self, finding_id: str, status: str) -> bool:
         """
-        Retrieve scan history for project.
+        Update the status field of a single finding in-place.
+        Returns True if found and updated, False if not found.
         """
-
-        history = []
-
-        for scan in self.list_scans():
-
-            if (
-                scan.get(
-                    "project_name"
-                )
-                == project_name
-            ):
-                history.append(scan)
-
-        return history
-
-    def _store_individual_findings(
-        self,
-        scan_id: str,
-        project_name: str,
-        results: List[Dict]
-    ):
-        """
-        Store findings individually
-        for future querying/RAG.
-        """
-
-        for index, finding in enumerate(results):
-
-            record = {
-
-                "finding_id":
-                    f"{scan_id}_{index}",
-
-                "scan_id": scan_id,
-
-                "project_name":
-                    project_name,
-
-                "created_at":
-                    datetime.utcnow()
-                    .isoformat(),
-
-                "finding": finding
-            }
-
-            finding_file = (
-                self.findings_path
-                / f"{scan_id}_{index}.json"
-            )
-
-            with open(
-                finding_file,
-                "w",
-                encoding="utf-8"
-            ) as file:
-
-                json.dump(
-                    record,
-                    file,
-                    indent=4
-                )
-
-    def _initialize_storage(
-        self
-    ):
-        """
-        Initialize repository directories.
-        """
-
-        os.makedirs(
-            self.base_path,
-            exist_ok=True
-        )
-
-        os.makedirs(
-            self.findings_path,
-            exist_ok=True
-        )
-
-        os.makedirs(
-            self.scans_path,
-            exist_ok=True
-        )
-
-    @staticmethod
-    def _generate_scan_id(
-        project_name: str
-    ) -> str:
-        """
-        Generate unique scan ID.
-        """
-
-        timestamp = datetime.utcnow().strftime(
-            "%Y%m%d_%H%M%S"
-        )
-
-        normalized = (
-            project_name
-            .replace(" ", "_")
-            .lower()
-        )
-
-        return f"{normalized}_{timestamp}"
+        for scan_file in _BASE_DIR.glob("*.json"):
+            try:
+                record = json.loads(scan_file.read_text(encoding="utf-8"))
+                for finding in record.get("findings", []):
+                    if finding.get("id") == finding_id:
+                        finding["status"] = status
+                        scan_file.write_text(
+                            json.dumps(record, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                        return True
+            except Exception:
+                continue
+        return False
