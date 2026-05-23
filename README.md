@@ -1,70 +1,74 @@
 # AI AppSec Platform
 
-AI-powered Application Security (AppSec) platform designed to combine traditional security scanning with contextual AI reasoning for vulnerability prioritization, exploitability analysis, and remediation guidance.
+AI-powered Application Security platform that combines traditional static analysis
+with contextual AI reasoning for vulnerability prioritization, exploitability
+analysis, and remediation guidance.
 
 ---
 
 ## Vision
 
-Traditional security tools often generate large volumes of findings:
+Traditional security tools generate large volumes of raw findings:
 
 - False positives
 - Duplicate issues
 - Low-priority alerts
 - Difficult remediation paths
 
-The goal of this platform is to transform raw scanner outputs into:
+This platform transforms raw scanner output into:
 
-- Contextual findings
-- Exploitability-aware analysis
-- AI-assisted remediation
+- Contextual, enriched findings
+- Exploitability-aware AI analysis
+- AI-assisted remediation guidance
 - Actionable security intelligence
 
-The long-term objective is to function as an AI-assisted security engineer rather than a simple scanner.
+The long-term objective is to function as an AI-assisted security engineer,
+not a simple scanner.
 
 ---
 
-## Core Objectives
-
-- Reduce alert fatigue
-- Improve vulnerability prioritization
-- Provide AI-generated contextual reasoning
-- Support secure multi-tenant architecture
-- Enable repository, web application, API, and AI/ML security testing
-- Build an enterprise-grade AppSec workflow platform
-
----
-
-## Current Architecture
+## Current Architecture (MVP)
 
 ```text
-Repository / ZIP Upload / GitHub URL / Website URL
-                        ↓
-                Security Scanner Layer
-                        ↓
-              Findings Normalization
-                        ↓
-              Context Enrichment Layer
-            ├── Framework Detection
-            ├── Endpoint Extraction
-            ├── Snippet Extraction
-            └── Context Builder
-                        ↓
-                 Risk Scoring Engine
-                        ↓
-                  AI Analysis Layer
-            ├── Prompt Builder
-            ├── Model Router
-            ├── Response Parser
-            └── Analysis Engine
-                        ↓
-               Deduplication Layer
-                        ↓
-                Findings Repository
-                        ↓
-                  Reporting Layer
-                        ↓
-          Dashboard / APIs / Reports
+GitHub Repository URL  ──or──  ZIP File Upload
+                        │
+                        ▼
+             Clone / Extract to disk
+                        │
+                        ▼
+           Semgrep Static Analysis
+                        │
+                        ▼
+          Findings Normalization
+                        │
+                        ▼
+          Context Enrichment Layer
+        ├── Framework Detection
+        ├── Endpoint Extraction
+        ├── Snippet Extraction
+        └── Context Builder
+                        │
+                        ▼
+           Risk Scoring Engine
+                        │
+                        ▼
+            AI Analysis Layer  (Groq API)
+        ├── Model Router
+        ├── Prompt Builder
+        ├── Analysis Engine
+        └── Response Parser
+                        │
+                        ▼
+           Deduplication Layer
+                        │
+                        ▼
+           Findings Repository  (JSON)
+                        │
+                        ▼
+              Reporting Layer
+                        │
+                        ▼
+           Frontend Dashboard  (Next.js)
 ```
 
 ---
@@ -73,47 +77,170 @@ Repository / ZIP Upload / GitHub URL / Website URL
 
 ### Backend
 
-- Python
+- Python 3.11+
 - FastAPI
-- Groq API
-- JSON storage (temporary)
-
-Future:
-
-- PostgreSQL
-- Docker
-- Prisma ORM
+- Groq API (LLaMA 3.1 / 3.3)
+- JSON file storage (temporary — PostgreSQL planned)
+- Semgrep (must be installed separately — see setup)
 
 ### Frontend
 
-- Next.js
+- Next.js 14 (App Router)
 - TypeScript
 - Tailwind CSS
 - React Query
 
 ### AI / Security
 
-- Semgrep
-- OWASP references
-- MITRE ATT&CK mappings
-- CVE datasets
-- AI reasoning engine
+- Semgrep (static analysis)
+- OWASP vulnerability mapping
+- MITRE ATT&CK references
+- AI reasoning via Groq API
+
+---
+
+## Local Development Setup
+
+### Prerequisites
+
+| Tool | Required version | Notes |
+|---|---|---|
+| Python | 3.11 or 3.12 recommended | 3.13 works but Semgrep pip install may vary |
+| Node.js | 18+ | For frontend |
+| Semgrep | 1.38.0+ | **Must be on system PATH** — see note below |
+| Git | Any recent version | For repository cloning |
+
+> **Important — Semgrep installation:**
+> Semgrep must be installed and accessible as `semgrep` on your system PATH.
+> The platform calls `semgrep` directly as a binary (not `python -m semgrep`,
+> which was deprecated in Semgrep 1.38.0).
+>
+> Install Semgrep:
+> ```bash
+> pip install semgrep
+> ```
+> Verify it works:
+> ```bash
+> semgrep --version
+> ```
+
+---
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Suresh-Nagvanshi/ai-appsec-platform.git
+cd ai-appsec-platform
+```
+
+---
+
+### 2. Backend setup
+
+```bash
+pip install -r requirements.txt
+```
+
+Create a `.env` file in the project root:
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+Get a free Groq API key at: https://console.groq.com
+
+---
+
+### 3. Start the backend
+
+> ⚠️ **Use `python -m backend.run` — NOT `uvicorn backend.main:app --reload` directly.**
+>
+> The custom launcher (`backend/run.py`) configures `reload_excludes` to prevent
+> uvicorn from watching cloned repository files and extracted ZIP contents.
+> Running uvicorn directly causes WatchFiles to trigger server reloads mid-scan,
+> killing in-progress scans.
+
+```bash
+python -m backend.run
+```
+
+Backend API will be available at:
+
+```
+http://127.0.0.1:8000
+```
+
+API docs (auto-generated):
+
+```
+http://127.0.0.1:8000/docs
+```
+
+---
+
+### 4. Frontend setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend will be available at:
+
+```
+http://localhost:3000
+```
 
 ---
 
 ## Current Project Status
 
-**Current Phase**
+**Phase:** MVP — GitHub URL scanning + ZIP upload scanning
 
-Foundation + AI analysis infrastructure + frontend dashboard architecture
+**Status:** Actively under development
 
-**Status**
+### What is working
 
-Actively under development
+| Feature | Status |
+|---|---|
+| GitHub repository URL scanning | ✅ Working |
+| ZIP file upload scanning | ✅ Working |
+| Semgrep static analysis | ✅ Working |
+| Context enrichment pipeline | ✅ Wired |
+| Risk scoring | ✅ Wired |
+| AI analysis via Groq (LLaMA 3.3 70B / 3.1 8B) | ✅ Wired |
+| Finding deduplication | ✅ Wired |
+| Findings persistence (JSON) | ✅ Wired |
+| Scan state persistence across restarts | ✅ Fixed |
+| Frontend scan session page | ✅ Working |
+| Frontend findings dashboard | ✅ Working |
+| Scan progress polling | ✅ Working |
+
+### Known limitations (MVP scope)
+
+| Limitation | Notes |
+|---|---|
+| No authentication | All endpoints are public — do not expose publicly |
+| In-memory scan state | Persisted to `data/scan_state.json`; lost only on manual file delete |
+| JSON storage | Will be replaced with PostgreSQL |
+| No file size limits | Large repositories / ZIPs will take significant time |
+| AI analysis is synchronous per-finding | Large repos with many findings will be slow |
 
 ---
 
-## Implemented Features
+## Implemented Components
+
+### Backend
+
+- FastAPI application with full scan pipeline
+- GitHub repository URL scan endpoint (`POST /api/scans/github`)
+- ZIP file upload scan endpoint (`POST /api/scans/file`)
+- Scan state polling endpoint (`GET /api/scans/{scan_id}`)
+- Scan list endpoint (`GET /api/scans`)
+- Findings API (`GET /findings`)
+- Report generation endpoint
+- Scan state persistence (`data/scan_state.json`)
 
 ### AI Layer
 
@@ -122,7 +249,7 @@ Actively under development
 - Analysis Engine
 - Async Analysis Engine
 - Batch Analysis Engine
-- Model Router
+- Model Router (routes simple findings to LLaMA 3.1 8B, complex to LLaMA 3.3 70B)
 
 ### Context Enrichment
 
@@ -133,33 +260,106 @@ Actively under development
 
 ### Security Processing
 
-- Risk Scoring
-- Finding Deduplication
+- Risk Scoring Engine
+- Finding Deduplicator
 - Findings Repository
-- Diff Analyzer
-- Report Generation
-
-### Backend
-
-- FastAPI application
-- Findings API endpoint
-- Scan storage architecture
+- Report Generator
 
 ### Frontend
 
-- Dashboard UI
-- Findings workflow interface
-- Security posture visualization
-- React Query integration
-- Backend integration
+- Security Dashboard (Overview)
+- Scan session page with live pipeline steps + logs
+- Findings list and detail pages
+- Repositories page
+- Reports page
+- Real-time scan progress polling via React Query
+
+---
+
+## Directory Structure
+
+```text
+ai-appsec-platform/
+├── backend/
+│   ├── main.py                  # FastAPI app entrypoint
+│   ├── run.py                   # Uvicorn launcher (use this to start)
+│   ├── api/
+│   │   ├── scans.py             # Scan endpoints
+│   │   ├── scan_state.py        # Shared in-memory + disk scan state
+│   │   └── findings.py          # Findings endpoints (currently serving mock + real)
+│   ├── services/
+│   │   └── scan_orchestrator.py # Full scan pipeline wiring
+│   ├── ai/
+│   │   ├── analysis_engine.py
+│   │   ├── prompt_builder.py
+│   │   ├── response_parser.py
+│   │   └── model_router.py
+│   ├── enrichment/
+│   │   └── context_builder.py
+│   ├── risk/
+│   │   └── risk_scorer.py
+│   ├── deduplication/
+│   │   └── finding_deduplicator.py
+│   └── storage/
+│       └── findings_repository.py
+├── frontend/
+│   └── src/
+│       ├── app/                 # Next.js App Router pages
+│       ├── components/          # Shared UI components
+│       ├── hooks/               # React Query hooks
+│       └── services/            # API service layer
+├── data/
+│   └── scan_state.json          # Persisted scan state (auto-created)
+├── results/                     # Semgrep raw output (auto-created)
+├── repos/                       # Cloned repositories (auto-created, auto-cleaned)
+├── uploads/                     # ZIP uploads (auto-created, auto-cleaned)
+├── extracted/                   # Extracted ZIP contents (auto-created, auto-cleaned)
+└── .env                         # Environment variables (create manually)
+```
+
+---
+
+## Bug Fixes Applied
+
+### Fix 1 — Semgrep deprecated invocation (May 2026)
+
+**Problem:** Semgrep was called as `python -m semgrep`, which was deprecated in
+Semgrep 1.38.0. On Windows with a bundled Semgrep binary, this also caused a
+fatal `Failed to import the site module` crash due to Python environment variable
+pollution (`PYTHONUTF8`, `PYTHONIOENCODING`).
+
+**Fix:** Semgrep is now called as the `semgrep` binary directly. The subprocess
+environment no longer injects Python-specific encoding variables.
+
+### Fix 2 — Scan state lost on server restart (May 2026)
+
+**Problem:** Scan state was held in an in-memory dict only. Uvicorn `--reload`
+was triggered by WatchFiles detecting file writes in the `repos/` directory
+(from cloning), killing the running scan and wiping all scan state.
+
+**Fix:**
+- Created `backend/run.py` launcher with `reload_excludes` for `repos/`,
+  `extracted/`, `uploads/`, `results/`, `data/`, `*.json`
+- Added disk persistence to `backend/api/scan_state.py` — scan state is
+  written to `data/scan_state.json` after every mutation and loaded on startup
+
+### Fix 3 — Circular import on startup (May 2026)
+
+**Problem:** `backend/api/scans.py` and `backend/services/scan_orchestrator.py`
+imported each other, causing an `ImportError` on startup.
+
+**Fix:** Shared `_scans` dict moved to `backend/api/scan_state.py`. Both modules
+import from the neutral shared module — no cycle.
 
 ---
 
 ## In Progress
 
+- Replace mock findings in `GET /findings` with real persisted data
+- Findings detail page connected to real API
 - PostgreSQL integration
 - Docker setup
-- Authentication
+- Authentication and API key middleware
 - RBAC
 - Multi-tenant isolation
 
@@ -169,45 +369,32 @@ Actively under development
 
 ### Repository Security
 
-- GitHub repository URL scanner
-- ZIP upload scanner enhancements
 - Branch selection
-- Incremental scanning
+- Incremental / diff scanning
+- GitHub App integration
 
 ### Website Security
 
 - Website URL scanner
 - Crawling engine
-- Page discovery
 - Client-side vulnerability analysis
 
 ### API Security
 
 - Endpoint discovery
-- API endpoint tester
-- Authentication testing
-- Authorization testing
 - OWASP API Top 10 mapping
+- Authentication and authorization testing
 
 ### AI/ML Security Testing
 
 - Prompt injection testing
 - Jailbreak testing
-- Hallucination detection
 - Model behavior evaluation
 - Safety assessment
-- Adversarial testing
-
-### Intelligence Layer
-
-- Optional anonymized telemetry
-- RAG-based security knowledge system
-- Similar vulnerability detection
 
 ### Enterprise Features
 
-- Organization support
-- Team management
+- Organization and team management
 - RBAC
 - Audit logs
 - CI/CD integrations
@@ -215,100 +402,6 @@ Actively under development
 
 ---
 
-## Multi-Tenant Security Principles
+## Contributing
 
-- Tenant isolation
-- Organization-level access control
-- RBAC
-- Data segregation
-- Secure storage practices
-
----
-
-## Privacy Principles
-
-Customer source code and security findings are sensitive.
-
-Planned approach:
-
-> Customers may optionally allow anonymized security telemetry to improve detection quality and AI reasoning.
-
-Important constraints:
-
-- Optional
-- Anonymized
-- Telemetry only
-- No raw code sharing
-
----
-
-## Future Roadmap
-
-### Phase 1
-
-- Core scanning pipeline
-- AI analysis engine
-- Dashboard foundation
-
-### Phase 2
-
-- Repository scanning
-- Website scanning
-- API security testing
-
-### Phase 3
-
-- AI/ML security testing
-
-### Phase 4
-
-- Enterprise deployment
-- RBAC
-- Multi-tenancy
-- CI/CD integrations
-
----
-
-## Local Setup
-
-### Clone Repository
-
-```bash
-git clone https://github.com/<username>/ai-appsec-platform.git
-cd ai-appsec-platform
-```
-
-### Backend
-
-```bash
-pip install -r requirements.txt
-uvicorn backend.main:app --reload
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Frontend:
-
-```text
-http://localhost:3000
-```
-
-Backend:
-
-```text
-http://127.0.0.1:8000
-```
-
----
-
-## Contributors
-
-Maintained by:
-
-**Suresh Nagvanshi**
+Maintained by **Suresh Nagvanshi**.
