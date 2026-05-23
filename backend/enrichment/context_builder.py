@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import Dict, Optional
 
-from enrichment.snippet_extractor import SnippetExtractor
-from enrichment.framework_detector import FrameworkDetector
-from enrichment.endpoint_extractor import EndpointExtractor
+from backend.enrichment.snippet_extractor import SnippetExtractor
+from backend.enrichment.framework_detector import FrameworkDetector
+from backend.enrichment.endpoint_extractor import EndpointExtractor
 
 
 class ContextBuilder:

@@ -49,12 +49,12 @@ from uuid import uuid4
 from git import Repo
 
 # ── Internal modules ───────────────────────────────────────────────────────────────────
-from enrichment.context_builder import ContextBuilder
-from risk.risk_scorer import RiskScorer
-from ai.model_router import ModelRouter
-from ai.analysis_engine import AnalysisEngine
-from deduplication.finding_deduplicator import FindingDeduplicator
-from storage.findings_repository import FindingsRepository
+from backend.enrichment.context_builder import ContextBuilder
+from backend.risk.risk_scorer import RiskScorer
+from backend.ai.model_router import ModelRouter
+from backend.ai.analysis_engine import AnalysisEngine
+from backend.deduplication.finding_deduplicator import FindingDeduplicator
+from backend.storage.findings_repository import FindingsRepository
 
 # Live scan-state dict shared with the API polling endpoint
 from backend.api.scans import _scans
