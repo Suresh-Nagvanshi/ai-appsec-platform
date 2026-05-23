@@ -1,6 +1,6 @@
 ﻿from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-
+from backend.api.scans import router as scans_router
 from backend.ai_service import analyze_vulnerability
 from backend.routes.findings import (
 router as findings_router
@@ -11,6 +11,7 @@ import zipfile
 import subprocess
 import json
 import os
+import sys
 
 from pathlib import Path
 from git import Repo
@@ -23,6 +24,11 @@ os.environ["PYTHONIOENCODING"] = "utf-8"
 app = FastAPI(
 title="AI Security Agent Backend",
 version="1.0.0"
+)
+app.include_router(
+    scans_router,
+    prefix="/api/scans",
+    tags=["Scans"]
 )
 
 # Register Routers
@@ -91,6 +97,8 @@ async def scan_file(file: UploadFile = File(...)):
         # Semgrep Command
         # =========================
         command = [
+            sys.executable,
+            "-m",
             "semgrep",
             "--config=auto",
             str(extract_path),
@@ -105,12 +113,19 @@ async def scan_file(file: UploadFile = File(...)):
         # =========================
         # Run Semgrep
         # =========================
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["LANG"] = "en_US.UTF-8"
+
         result = subprocess.run(
             command,
             capture_output=True,
             text=True,
             encoding="utf-8",
-            errors="ignore"
+            errors="ignore",
+            env=env,
+            timeout=600
         )
 
         print("\n===== STDOUT =====")
@@ -142,6 +157,13 @@ async def scan_file(file: UploadFile = File(...)):
             "findings": findings,
             "results_file": str(result_file),
             "results": semgrep_results.get("results", [])
+        }
+
+    except subprocess.TimeoutExpired as e:
+        return {
+            "status": "error",
+            "message": "Semgrep scan timed out after 600 seconds",
+            "stderr": str(e)
         }
 
     except zipfile.BadZipFile:
@@ -248,6 +270,8 @@ async def scan_github_repo(repo_url: str):
         # Semgrep Command
         # =========================
         command = [
+            sys.executable,
+            "-m",
             "semgrep",
             "--config=auto",
             str(repo_path),
@@ -262,12 +286,19 @@ async def scan_github_repo(repo_url: str):
         # =========================
         # Run Semgrep
         # =========================
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["LANG"] = "en_US.UTF-8"
+
         result = subprocess.run(
             command,
             capture_output=True,
             text=True,
             encoding="utf-8",
-            errors="ignore"
+            errors="ignore",
+            env=env,
+            timeout=600
         )
 
         print("\n===== STDOUT =====")
@@ -301,6 +332,13 @@ async def scan_github_repo(repo_url: str):
             "results": semgrep_results.get("results", [])
         }
 
+    except subprocess.TimeoutExpired as e:
+        return {
+            "status": "error",
+            "message": "Semgrep scan timed out after 600 seconds",
+            "stderr": str(e)
+        }
+
     except Exception as e:
         return {
             "status": "error",
@@ -332,7 +370,8 @@ async def generate_report(project_name: str):
         with open(result_file, "r", encoding="utf-8") as f:
             semgrep_results = json.load(f)
 
-        findings = semgrep_results.get("results", [])[:1]
+        # Process the first five findings for the AI report to provide richer output.
+        findings = semgrep_results.get("results", [])[:5]
 
         if not findings:
             return {
