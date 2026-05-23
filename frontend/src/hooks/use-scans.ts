@@ -1,28 +1,23 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { listScans, type ScanRecord } from "@/services/scans.service";
 
-import {
-    getScans,
-    type Scan,
-} from "@/services/scans.service";
-
+/**
+ * useScans
+ * ========
+ * Returns all scan records, newest first.
+ * Re-exported as a convenience wrapper around React Query.
+ *
+ * Fix: renamed getScans -> listScans to match the updated scans.service.ts
+ *      and Scan -> ScanRecord (the canonical type from the service).
+ */
 export function useScans() {
-
-    return useQuery<Scan[]>({
-
-        queryKey: [
-            "scans"
-        ],
-
-        queryFn: getScans,
-
-        staleTime: 1000 * 60 * 5,
-
-        retry: 1,
-
-        refetchOnWindowFocus: false,
-
-    });
-
+  return useQuery<ScanRecord[]>({
+    queryKey: ["scans"],
+    queryFn: listScans,
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
 }
