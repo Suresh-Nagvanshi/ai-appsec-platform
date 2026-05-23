@@ -1,40 +1,18 @@
-export async function getFindings() {
+import api from "@/lib/api";
 
-    await new Promise(
-        (resolve)=>
-            setTimeout(resolve,500)
-    );
+export interface Finding {
+    id: string;
+    title: string;
+    filePath: string;
+    severity: string;
+    riskScore: number;
+    exploitability: string;
+    status: string;
+    repository?: string;
+    createdAt?: string;
+}
 
-    return [
-        {
-            id:"1",
-            title:"SQL Injection vulnerability",
-            filePath:"src/api/users.ts",
-            severity:"CRITICAL",
-            riskScore:9.8,
-            exploitability:"Very High",
-            status:"OPEN"
-        },
-
-        {
-            id:"2",
-            title:"Hardcoded JWT secret",
-            filePath:".env",
-            severity:"HIGH",
-            riskScore:8.1,
-            exploitability:"High",
-            status:"OPEN"
-        },
-
-        {
-            id:"3",
-            title:"Insecure deserialization",
-            filePath:"serializers.py",
-            severity:"MEDIUM",
-            riskScore:6.5,
-            exploitability:"Medium",
-            status:"IN_PROGRESS"
-        }
-    ];
-
+export async function getFindings(): Promise<Finding[]> {
+    const response = await api.get<Finding[]>("/findings");
+    return response.data;
 }
