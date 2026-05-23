@@ -1,3 +1,5 @@
+import api from "@/lib/api";
+
 export type TimelineStatus =
     | "PENDING"
     | "RUNNING"
@@ -31,165 +33,11 @@ export interface ScanDetails {
     logs: ScanLog[];
 }
 
-const scanStore: Record<
-    string,
-    {
-        stepIndex: number;
-        logs: ScanLog[];
-    }
-> = {};
-
-const stages = [
-
-    "Repository Imported",
-    "Static Analysis",
-    "Dependency Scan",
-    "AI Analysis",
-    "Report Generation"
-
-];
-
-const stageMessages = [
-
-    "Repository cloned successfully",
-    "Semgrep analysis running",
-    "Checking dependencies",
-    "Running AI vulnerability analysis",
-    "Generating security report"
-
-];
-
-function getTime() {
-
-    return new Date().toLocaleTimeString(
-        [],
-        {
-            hour12: false
-        }
-    );
-
-}
-
 export async function getScanDetails(
     scanId: string
 ): Promise<ScanDetails> {
-
-    await new Promise(
-        resolve =>
-            setTimeout(resolve, 300)
+    const response = await api.get<ScanDetails>(
+        `/api/scans/${scanId}/status`
     );
-
-    if (!scanStore[scanId]) {
-
-        scanStore[scanId] = {
-
-            stepIndex: 0,
-
-            logs: [
-                {
-                    id: crypto.randomUUID(),
-                    time: getTime(),
-                    level: "INFO",
-                    message: "Starting scan"
-                }
-            ]
-
-        };
-
-    }
-
-    const scan = scanStore[scanId];
-
-    if (
-        scan.stepIndex <
-        stages.length
-    ) {
-
-        scan.logs.push({
-
-            id: crypto.randomUUID(),
-
-            time: getTime(),
-
-            level: "INFO",
-
-            message:
-                stageMessages[
-                scan.stepIndex
-                ]
-
-        });
-
-        scan.stepIndex++;
-
-    }
-
-    const timeline: TimelineStep[] =
-        stages.map(
-            (
-                stage,
-                index
-            ): TimelineStep => ({
-
-                id: String(index),
-
-                title: stage,
-
-                status:
-                    index < scan.stepIndex
-                        ? "COMPLETED"
-                        : index === scan.stepIndex
-                            ? "RUNNING"
-                            : "PENDING"
-
-            })
-        );
-
-    const completed =
-        scan.stepIndex;
-
-    const summary = {
-
-        critical:
-            completed >= 5
-                ? Math.floor(
-                    Math.random() * 4
-                )
-                : 0,
-
-        high:
-            completed >= 5
-                ? Math.floor(
-                    Math.random() * 10
-                )
-                : 0,
-
-        medium:
-            completed >= 5
-                ? Math.floor(
-                    Math.random() * 15
-                )
-                : 0,
-
-        low:
-            completed >= 5
-                ? Math.floor(
-                    Math.random() * 10
-                )
-                : 0
-
-    };
-
-    return {
-
-        id: scanId,
-
-        summary,
-
-        timeline,
-
-        logs: scan.logs
-
-    };
-
+    return response.data;
 }
