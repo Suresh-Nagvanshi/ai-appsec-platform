@@ -89,7 +89,7 @@ export function FindingDetails({
                             text-zinc-100
                             "
                         >
-                            {data.title}
+                            {data.representative_finding?.finding?.check_id || "Untitled"}
                         </h1>
 
                         <p
@@ -98,14 +98,14 @@ export function FindingDetails({
                             text-zinc-400
                             "
                         >
-                            {data.filePath}
+                            {data.representative_finding?.finding?.path || "—"}
                         </p>
 
                     </div>
 
                     <SeverityBadge
                         severity={
-                            data.severity
+                            data.representative_finding?.finding?.extra?.severity || "UNKNOWN"
                         }
                     />
 
@@ -138,7 +138,7 @@ export function FindingDetails({
                             text-red-400
                             "
                         >
-                            {data.riskScore}
+                            {data.risk_summary?.max_risk_score ?? "—"}
                         </span>
 
                     </div>
@@ -153,7 +153,7 @@ export function FindingDetails({
                         text-sm
                         "
                     >
-                        {data.cwe}
+                        {data.representative_finding?.finding?.extra?.metadata?.cwe?.[0] || "No CWE"}
                     </div>
 
 
@@ -166,7 +166,7 @@ export function FindingDetails({
                         text-sm
                         "
                     >
-                        {data.owasp}
+                        {data.representative_finding?.finding?.extra?.metadata?.owasp?.[0] || "No OWASP"}
                     </div>
 
 
@@ -181,7 +181,7 @@ export function FindingDetails({
                     >
                         MITRE:
                         {" "}
-                        {data.mitre}
+                        {data.representative_finding?.ai_analysis?.mitre_attack_mapping?.[0] || "No MITRE"}
                     </div>
 
                 </div>
