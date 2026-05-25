@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Tuple
+from typing import Dict
 
 
 class PromptBuilder:
@@ -31,7 +31,7 @@ Always return valid JSON only.
     def build(
         self,
         enriched_finding: Dict
-    ) -> Tuple[str, str]:
+    ) -> str:
         """
         Build structured AI analysis prompt.
         """
@@ -151,8 +151,10 @@ Rules:
 - Do NOT return explanations outside JSON
 """
 
-        user_prompt = (
-            "SECURITY FINDING CONTEXT:\n"
+        final_prompt = (
+            self.SYSTEM_PROMPT
+            + "\n\n"
+            + "SECURITY FINDING CONTEXT:\n"
             + json.dumps(
                 structured_context,
                 indent=2
@@ -161,4 +163,4 @@ Rules:
             + instructions
         )
 
-        return (self.SYSTEM_PROMPT, user_prompt)
+        return final_prompt

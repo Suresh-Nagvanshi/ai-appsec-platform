@@ -172,7 +172,7 @@ export function FindingsTable() {
                                             text-zinc-100
                                             "
                                         >
-                                            {finding.representative_finding?.finding?.check_id || "Untitled"}
+                                            {finding.title || finding.rule_id || finding.finding?.rule_id || "Untitled"}
                                         </h3>
 
                                         <p
@@ -182,7 +182,7 @@ export function FindingsTable() {
                                             text-zinc-400
                                             "
                                         >
-                                            {finding.representative_finding?.finding?.path || "—"}
+                                            {finding.filePath || finding.path || finding.finding?.path || "—"}
                                         </p>
 
                                     </div>
@@ -193,7 +193,7 @@ export function FindingsTable() {
 
                                     <SeverityBadge
                                         severity={
-                                            finding.representative_finding?.finding?.extra?.severity || "UNKNOWN"
+                                            finding.severity || finding.finding?.severity || "UNKNOWN"
                                         }
                                     />
 
@@ -206,7 +206,7 @@ export function FindingsTable() {
                                     text-zinc-300
                                     "
                                 >
-                                    {finding.risk_summary?.max_risk_score ?? "—"}
+                                    {finding.riskScore ?? finding.risk?.score ?? "—"}
                                 </td>
 
                                 <td
@@ -216,7 +216,7 @@ export function FindingsTable() {
                                     text-zinc-300
                                     "
                                 >
-                                    {finding.representative_finding?.risk?.exploitability ?? "—"}
+                                    {finding.exploitability ?? finding.risk?.exploitability ?? "—"}
                                 </td>
 
                                 <td className="px-6 py-5">
