@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useFindings } from "@/hooks/use-findings";
+import { useFindings } from "@/hooks/useFindings";
 import { SeverityBadge } from "./severity-badge";
 
 function statusStyles(status: string) {
@@ -56,12 +56,31 @@ export function FindingsTable() {
                 text-red-400
                 "
             >
-                Failed to load findings.
+                Failed to load findings. Ensure the backend is running and reachable.
             </div>
         );
     }
 
     const findings = data?.findings || [];
+
+    if (findings.length === 0) {
+        return (
+            <div
+                className="
+                rounded-xl
+                border border-zinc-800
+                bg-zinc-950
+                p-12
+                text-center
+                "
+            >
+                <p className="text-zinc-400 font-medium">No findings yet.</p>
+                <p className="mt-1 text-sm text-zinc-500">
+                    Run a GitHub or ZIP scan to see security vulnerabilities here.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div
@@ -193,7 +212,9 @@ export function FindingsTable() {
 
                                     <SeverityBadge
                                         severity={
-                                            finding.representative_finding?.finding?.extra?.severity || "UNKNOWN"
+                                            finding.representative_finding?.finding?.extra?.severity ||
+                                            finding.representative_finding?.risk?.severity ||
+                                            "UNKNOWN"
                                         }
                                     />
 
