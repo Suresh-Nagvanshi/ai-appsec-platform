@@ -31,6 +31,31 @@ export interface DashboardStats {
   isError: boolean;
 }
 
+/**
+ * Resolve the effective severity from a finding that may be:
+ *   (a) a deduplicated group wrapper produced by FindingDeduplicator, or
+ *   (b) a flat finding object.
+ *
+ * Deduplication wrapper shape:
+ *   {
+ *     representative_finding: {
+ *       finding: { extra: { severity }, severity },
+ *       risk:    { severity }
+ *     },
+ *     severity: undefined   ← stamp by FindingsRepository is on the wrapper
+ *                              but severity itself is nested
+ *   }
+ */
+function resolveSeverity(f: any): string {
+  return (
+    f.representative_finding?.finding?.extra?.severity ||
+    f.representative_finding?.risk?.severity ||
+    f.representative_finding?.finding?.severity ||
+    f.severity ||
+    ""
+  ).toUpperCase();
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────────
 
 export function useDashboardStats(): DashboardStats {
@@ -56,9 +81,7 @@ export function useDashboardStats(): DashboardStats {
   const totalFindings  = findingsQuery.data?.total ?? 0;
 
   const bySeverity = (sev: string) =>
-    allFindings.filter(
-      (f) => (f.severity as string | undefined)?.toUpperCase() === sev
-    ).length;
+    allFindings.filter((f) => resolveSeverity(f) === sev).length;
 
   const criticalFindings = bySeverity("CRITICAL");
   const highFindings     = bySeverity("HIGH");
