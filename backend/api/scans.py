@@ -24,7 +24,8 @@ from typing import List
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from backend.services.scan_orchestrator import run_github_scan, run_zip_scan
 from backend.api.scan_state import _scans, save_state
@@ -40,6 +41,20 @@ _TIMELINE_STEPS = [
 ]
 
 MAX_ZIP_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
+# ── Request models ─────────────────────────────────────────────────────────────
+
+class GithubScanRequest(BaseModel):
+    """
+    JSON body for POST /api/scans/github.
+
+    Using a Pydantic model (instead of Form(...)) keeps all endpoints
+    consistent — they all accept application/json — and matches axios's
+    default Content-Type behaviour in the frontend, avoiding 400 errors
+    caused by a missing form field when the client sends a JSON body.
+    """
+    repo_url: str
 
 
 # ── SSRF guard ────────────────────────────────────────────────────────────────
@@ -124,19 +139,22 @@ def _new_scan(scan_type: str, target: str) -> dict:
 @router.post("/github", status_code=202)
 async def scan_github(
     background_tasks: BackgroundTasks,
-    repo_url: str = Form(...),
+    payload: GithubScanRequest,
 ):
     """
     Start an async GitHub repository scan.
+
+    Accepts JSON body:  { "repo_url": "https://github.com/<owner>/<repo>" }
+
     Returns scan_id immediately; poll GET /api/scans/{scan_id} for progress.
     """
-    _validate_github_url(repo_url)
+    _validate_github_url(payload.repo_url)
 
-    scan = _new_scan("github", repo_url)
+    scan = _new_scan("github", payload.repo_url)
     _scans[scan["id"]] = scan
     save_state()
 
-    background_tasks.add_task(run_github_scan, scan["id"], repo_url)
+    background_tasks.add_task(run_github_scan, scan["id"], payload.repo_url)
 
     return {"scan_id": scan["id"], "status": "QUEUED"}
 
