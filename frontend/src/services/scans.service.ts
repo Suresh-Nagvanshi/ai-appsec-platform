@@ -26,24 +26,22 @@ export interface ScanRecord {
 
 /** Start a GitHub repository scan. Returns scan_id. */
 export async function startGithubScan(repoUrl: string): Promise<string> {
-  const form = new FormData();
-  form.append("repo_url", repoUrl);
+  // Backend expects application/json with { repo_url } — axios default, no headers override needed.
   const res = await api.post<{ scan_id: string; status: string }>(
     "/api/scans/github",
-    form,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    { repo_url: repoUrl }
   );
   return res.data.scan_id;
 }
 
 /** Start a ZIP upload scan. Returns scan_id. */
 export async function startZipScan(file: File): Promise<string> {
+  // File uploads must remain multipart/form-data.
   const form = new FormData();
   form.append("file", file);
   const res = await api.post<{ scan_id: string; status: string }>(
     "/api/scans/zip",
-    form,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    form
   );
   return res.data.scan_id;
 }
