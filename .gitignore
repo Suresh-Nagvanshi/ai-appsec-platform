@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+!.env.local.example
 
 *.key
 *.pem
@@ -36,6 +37,7 @@ env/
 # NODE / NEXT
 ##################################################
 
+node_modules/
 frontend/node_modules/
 frontend/.next/
 frontend/out/
@@ -46,6 +48,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.pnpm-store/
 
 ##################################################
 # IDE / OS
@@ -56,9 +59,10 @@ pnpm-debug.log*
 
 .DS_Store
 Thumbs.db
+desktop.ini
 
 ##################################################
-# GENERATED SECURITY DATA
+# GENERATED SECURITY DATA (root-level)
 ##################################################
 
 uploads/*
@@ -77,7 +81,30 @@ reports/*
 !reports/.gitkeep
 
 ##################################################
-# DATABASE STORAGE
+# BACKEND GENERATED DATA
+##################################################
+
+backend/extracted/*
+!backend/extracted/.gitkeep
+
+backend/results/*
+!backend/results/.gitkeep
+
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+##################################################
+# DATABASE STORAGE (root-level)
+##################################################
+
+database/scans/*
+!database/scans/.gitkeep
+
+database/repositories/*
+!database/repositories/.gitkeep
+
+##################################################
+# DATABASE STORAGE (backend)
 ##################################################
 
 backend/database/findings/*
@@ -87,7 +114,7 @@ backend/database/scans/*
 !backend/database/scans/.gitkeep
 
 ##################################################
-# SCAN OUTPUTS
+# SCAN OUTPUTS & TEMP FILES
 ##################################################
 
 data/semgrep/output.json
@@ -95,6 +122,9 @@ data/semgrep/parsed_results.json
 
 data/ai_report.json
 data/correlation_output.json
+data/scan_state.json
+
+temp_semgrep*.json
 
 ##################################################
 # LARGE DATASETS
@@ -142,7 +172,7 @@ tmp/
 temp/
 
 ##################################################
-# SECURITY
+# SECURITY / ARCHIVES
 ##################################################
 
 *.zip
@@ -154,3 +184,12 @@ temp/
 ##################################################
 
 !.gitkeep
+
+##################################################
+# GEMINI / AI TOOLS
+##################################################
+
+.gemini/
+.claude/
+AGENTS.md
+CLAUDE.md
