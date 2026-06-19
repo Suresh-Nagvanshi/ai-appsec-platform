@@ -8,41 +8,98 @@ Endpoints:
   GET  /api/scans/{scan_id} — get single scan detail + live progress
 
 Security measures applied here
-  - GitHub URL: must start with https://github.com/ (SSRF guard)
+  - GitHub URL: strict urlparse hostname check + owner/repo path depth guard
+    (blocks subdomain spoofing and credential-injection SSRF bypasses)
   - ZIP filename: Path(...).name strips directory components
   - ZIP size: max 50 MB enforced at read time
+  - ZIP magic bytes: PK header validated before accepting the file
   - ZIP member paths: validated in scan_orchestrator.run_zip_scan()
+  - All endpoints protected by API key (applied at router level in main.py)
 """
 
-import json
+import copy
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 
 from backend.services.scan_orchestrator import run_github_scan, run_zip_scan
+from backend.api.scan_state import _scans, save_state
 
 router = APIRouter()
 
-# ── In-memory scan store ─────────────────────────────────────────────────────
-# Shared module to avoid circular imports with scan_orchestrator.
-from backend.api.scan_state import _scans, save_state
-
 _TIMELINE_STEPS = [
     {"id": "0", "name": "Initialise",         "status": "PENDING"},
-    {"id": "1", "name": "Static Analysis",    "status": "PENDING"},
-    {"id": "2", "name": "Context Enrichment", "status": "PENDING"},
-    {"id": "3", "name": "AI Analysis",        "status": "PENDING"},
-    {"id": "4", "name": "Persist Results",    "status": "PENDING"},
+    {"id": "1", "name": "Static Analysis",     "status": "PENDING"},
+    {"id": "2", "name": "Context Enrichment",  "status": "PENDING"},
+    {"id": "3", "name": "AI Analysis",         "status": "PENDING"},
+    {"id": "4", "name": "Persist Results",     "status": "PENDING"},
 ]
 
 MAX_ZIP_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
+# ── SSRF guard ────────────────────────────────────────────────────────────────
+
+def _validate_github_url(repo_url: str) -> None:
+    """
+    Strict GitHub URL validation.
+
+    Accepts only:
+      https://github.com/<owner>/<repo>
+      https://github.com/<owner>/<repo>.git
+
+    Rejects:
+      https://github.com.evil.com/...   (subdomain spoofing)
+      https://github.com@evil.com/...   (credential-injection)
+      https://github.com/owner          (no repo segment — too shallow)
+      http://github.com/...             (non-HTTPS)
+      file:///etc/passwd                (local file)
+      git://internal/repo               (internal network)
+
+    Raises HTTPException(400) on any violation.
+    """
+    try:
+        parsed = urlparse(repo_url)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+    # Must be HTTPS
+    if parsed.scheme != "https":
+        raise HTTPException(
+            status_code=400,
+            detail="Only HTTPS URLs are accepted",
+        )
+
+    # Hostname must be exactly 'github.com' — no subdomains, no userinfo
+    if parsed.hostname != "github.com":
+        raise HTTPException(
+            status_code=400,
+            detail="Only public GitHub repositories are accepted (github.com)",
+        )
+
+    # Reject URLs with embedded credentials (https://user:pass@github.com/...)
+    if parsed.username or parsed.password:
+        raise HTTPException(
+            status_code=400,
+            detail="URLs with embedded credentials are not accepted",
+        )
+
+    # Path must have at least two non-empty segments: /owner/repo
+    path_parts = [p for p in parsed.path.strip("/").split("/") if p]
+    if len(path_parts) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="URL must point to a specific repository: https://github.com/<owner>/<repo>",
+        )
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def _new_scan(scan_type: str, target: str) -> dict:
-    import copy
     scan_id = str(uuid4())
     return {
         "id": scan_id,
@@ -73,12 +130,7 @@ async def scan_github(
     Start an async GitHub repository scan.
     Returns scan_id immediately; poll GET /api/scans/{scan_id} for progress.
     """
-    # SSRF guard: only public GitHub HTTPS URLs
-    if not repo_url.startswith("https://github.com/"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only public GitHub HTTPS URLs are accepted (https://github.com/...)",
-        )
+    _validate_github_url(repo_url)
 
     scan = _new_scan("github", repo_url)
     _scans[scan["id"]] = scan
@@ -98,22 +150,25 @@ async def scan_zip(
     Start an async ZIP upload scan.
     Returns scan_id immediately; poll GET /api/scans/{scan_id} for progress.
     """
-    # File name sanitisation — strips directory components
+    # Filename sanitisation — strips any directory path components
     safe_name = Path(file.filename or "upload.zip").name
     if not safe_name.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip files are accepted")
 
-    # Read with size limit
+    # Read entire upload with size cap
     zip_bytes = await file.read()
     if len(zip_bytes) > MAX_ZIP_SIZE:
         raise HTTPException(
             status_code=413,
-            detail=f"ZIP file exceeds the {MAX_ZIP_SIZE // (1024*1024)} MB limit",
+            detail=f"ZIP file exceeds the {MAX_ZIP_SIZE // (1024 * 1024)} MB limit",
         )
 
-    # ZIP magic-bytes validation (PK header)
-    if not zip_bytes[:2] == b"PK":
-        raise HTTPException(status_code=400, detail="File does not appear to be a valid ZIP archive")
+    # Magic-bytes validation: ZIP files always start with PK (\x50\x4b)
+    if zip_bytes[:2] != b"PK":
+        raise HTTPException(
+            status_code=400,
+            detail="File does not appear to be a valid ZIP archive",
+        )
 
     scan = _new_scan("zip", safe_name)
     _scans[scan["id"]] = scan
