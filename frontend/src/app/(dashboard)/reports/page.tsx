@@ -12,6 +12,9 @@
  *        • Severity summary  — Critical / High / Medium / Low pills
  *        • Findings table  — each row expandable into AI detail accordion
  *   5. "Export JSON" button lets user download the raw report payload
+ *
+ * Fix: report.findings guarded with ?? [] on both .length and .map() calls
+ *      so a missing/undefined findings key never crashes the render.
  */
 
 "use client";
@@ -210,6 +213,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function ReportView({ report }: { report: Report }) {
   const summary = report.summary ?? {};
+  // Defensive fallback: backend always sends findings:[] now, but guard
+  // here too so an old cached response can never crash the render.
+  const findings = report.findings ?? [];
 
   function downloadJson() {
     const blob = new Blob([JSON.stringify(report, null, 2)], {
@@ -274,7 +280,7 @@ function ReportView({ report }: { report: Report }) {
       </div>
 
       {/* ── Findings table ── */}
-      {report.findings.length === 0 ? (
+      {findings.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-12 text-center">
           <p className="text-zinc-400">No findings in this scan.</p>
         </div>
@@ -297,7 +303,7 @@ function ReportView({ report }: { report: Report }) {
                 </tr>
               </thead>
               <tbody>
-                {report.findings.map((f, i) => (
+                {findings.map((f, i) => (
                   <FindingRow key={f.id ?? i} raw={f} index={i} />
                 ))}
               </tbody>

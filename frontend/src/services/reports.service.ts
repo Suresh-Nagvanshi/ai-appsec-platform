@@ -3,6 +3,10 @@
  * ===============
  * Wraps the /report/generate backend endpoint.
  * Also re-exports listScans so the report page can populate a scan picker.
+ *
+ * Fix: findings typed as ReportFinding[] | undefined to honestly reflect
+ *      that an older/cached backend response may omit the key. The backend
+ *      now always returns findings:[] but the frontend guards defensively.
  */
 
 import api from "@/lib/api";
@@ -60,7 +64,9 @@ export interface Report {
   scan_type?: string;
   summary?: ReportSummary;
   finding_count: number;
-  findings: ReportFinding[];
+  // Typed as potentially undefined so TypeScript forces callers to guard with
+  // ?? [] — belt-and-suspenders alongside the backend always returning [].
+  findings?: ReportFinding[];
   format?: string;
 }
 
