@@ -21,11 +21,14 @@ if __name__ == "__main__":
     # spawned during hot-reloads can successfully find the 'backend' package.
     project_root = str(Path(__file__).resolve().parent.parent)
     existing_pythonpath = os.environ.get("PYTHONPATH", "")
-    os.environ["PYTHONPATH"] = f"{project_root};{existing_pythonpath}" if existing_pythonpath else project_root
+    sep = os.pathsep  # ':' on Unix, ';' on Windows — OS-aware
+    os.environ["PYTHONPATH"] = f"{project_root}{sep}{existing_pythonpath}" if existing_pythonpath else project_root
     uvicorn.run(
         "backend.main:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
         reload_dirs=["backend"],
+        reload_excludes=["repos", "extracted", "uploads", "results", "database", "data"],
     )
+

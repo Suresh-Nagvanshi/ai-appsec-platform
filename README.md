@@ -182,6 +182,24 @@ http://127.0.0.1:8000/docs
 
 ```bash
 cd frontend
+```
+
+Create the frontend environment file from the example:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Then edit `frontend/.env.local` and set:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_KEY=your_api_key_here
+```
+
+Install dependencies and start the dev server:
+
+```bash
 npm install
 npm run dev
 ```

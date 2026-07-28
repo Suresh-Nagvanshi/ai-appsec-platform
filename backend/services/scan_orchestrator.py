@@ -35,16 +35,28 @@ backend.api.scans so the polling endpoint sees live state.
 """
 
 import asyncio
+from datetime import datetime
 import json
+import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
-import logging
-from datetime import datetime
-from pathlib import Path
 from typing import Dict, List, Optional
 from uuid import uuid4
+
+# Ensure git executable is found even if Git is not in system PATH on Windows
+if shutil.which("git") is None:
+    for _candidate in [
+        r"C:\Program Files\Git\cmd\git.exe",
+        r"C:\Program Files (x86)\Git\cmd\git.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\Git\cmd\git.exe"),
+    ]:
+        if os.path.exists(_candidate):
+            os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = _candidate
+            os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + str(Path(_candidate).parent)
+            break
 
 from git import Repo
 
@@ -162,15 +174,16 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
         return json.load(fh)
 
 
-# ── AI analysis (sync, called via asyncio.to_thread) ─────────────────────────────────
+# ── AI analysis (async, concurrent processing) ───────────────────────────────────────
 
-def _analyze_findings(
+async def _async_analyze_findings(
+    scan_id: str,
     raw_findings: List[dict],
     project_path: str,
     project_name: str,
 ) -> List[dict]:
     """
-    Runs the full per-finding pipeline:
+    Runs the full per-finding pipeline concurrently:
       context_builder → risk_scorer → model_router → analysis_engine
 
     Returns a list of fully-enriched finding dicts ready for
@@ -180,44 +193,64 @@ def _analyze_findings(
     risk_scorer = RiskScorer()
     model_router = ModelRouter()
 
-    results: List[dict] = []
+    # Limit concurrent Groq API calls to avoid heavy rate-limiting
+    semaphore = asyncio.Semaphore(5)
+    total = len(raw_findings)
+    completed = 0
 
-    for raw in raw_findings:
-        try:
-            # 1. Context enrichment (normalises + adds snippet/framework/endpoint)
-            enriched = context_builder.build(
-                finding=raw,
-                project_path=project_path,
-            )
-            if "error" in enriched:
-                logger.warning("context_builder error: %s", enriched["error"])
+    async def process_one(raw: dict) -> dict:
+        nonlocal completed
+        async with semaphore:
+            def sync_task():
+                try:
+                    # 1. Context enrichment
+                    enriched = context_builder.build(
+                        finding=raw,
+                        project_path=project_path,
+                    )
+                    if "error" in enriched:
+                        logger.warning("context_builder error: %s", enriched["error"])
 
-            # 2. Risk scoring
-            risk = risk_scorer.calculate(enriched)
-            enriched["risk"] = risk
+                    # 2. Risk scoring
+                    risk = risk_scorer.calculate(enriched)
+                    enriched["risk"] = risk
 
-            # 3. Model routing (select fast vs deep LLM)
-            routing = model_router.route(enriched)
-            selected_model = routing["selected_model"]["model_name"]
+                    # 3. Model routing
+                    routing = model_router.route(enriched)
+                    selected_model = routing["selected_model"]["model_name"]
 
-            # 4. AI analysis with the routed model
-            engine = AnalysisEngine(model_name=selected_model)
-            ai_result = engine.analyze(enriched)
-            enriched["ai_analysis"] = ai_result
-            enriched["model_routing"] = routing
+                    # 4. AI analysis
+                    engine = AnalysisEngine(model_name=selected_model)
+                    ai_result = engine.analyze(enriched)
+                    enriched["ai_analysis"] = ai_result
+                    enriched["model_routing"] = routing
 
-            results.append(enriched)
+                    return enriched
 
-        except Exception as exc:
-            logger.error("Per-finding analysis failed: %s", exc)
-            # Still include the raw finding so nothing is silently lost
-            results.append({
-                "finding": raw,
-                "risk": {},
-                "ai_analysis": {"error": str(exc)},
-            })
+                except Exception as exc:
+                    logger.error("Per-finding analysis failed: %s", exc)
+                    return {
+                        "finding": raw,
+                        "risk": {},
+                        "ai_analysis": {"error": str(exc)},
+                    }
 
-    return results
+            result = await asyncio.to_thread(sync_task)
+            
+            completed += 1
+            # Emit progress update every 10 findings or at the end
+            if completed % 10 == 0 or completed == total:
+                _update_scan(
+                    scan_id,
+                    log_message=f"Analyzed {completed}/{total} findings...",
+                )
+            return result
+
+    if not raw_findings:
+        return []
+
+    tasks = [process_one(raw) for raw in raw_findings]
+    return await asyncio.gather(*tasks)
 
 
 # ── Main orchestrator ──────────────────────────────────────────────────────────────────────
@@ -287,7 +320,16 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
             timeline_status="COMPLETED",
         )
 
-        # ── STEP 3: Context + Risk + AI ─────────────────────────────────────────────
+        # ── STEP 3: Context Enrichment ───────────────────────────────────────────────
+        _update_scan(
+            scan_id,
+            progress=48,
+            log_message="Running context enrichment and risk scoring",
+            timeline_step_id="2",
+            timeline_status="RUNNING",
+        )
+
+        # ── STEP 3b: AI Analysis ────────────────────────────────────────────────────
         _update_scan(
             scan_id,
             progress=50,
@@ -296,11 +338,17 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
             timeline_status="RUNNING",
         )
 
-        enriched_findings = await asyncio.to_thread(
-            _analyze_findings,
+        enriched_findings = await _async_analyze_findings(
+            scan_id,
             raw_findings,
             str(repo_path),
             repo_name,
+        )
+
+        _update_scan(
+            scan_id,
+            timeline_step_id="2",
+            timeline_status="COMPLETED",
         )
 
         _update_scan(
@@ -336,7 +384,7 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
             timeline_status="RUNNING",
         )
 
-        summary = _build_summary(enriched_findings)
+        summary = _build_summary(deduplicated)
 
         findings_repo = FindingsRepository()
         storage_id = findings_repo.save_scan(
@@ -464,7 +512,16 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
             timeline_status="COMPLETED",
         )
 
-        # ── STEP 3: Context + Risk + AI ─────────────────────────────────────────────
+        # ── STEP 3: Context Enrichment ───────────────────────────────────────────────
+        _update_scan(
+            scan_id,
+            progress=48,
+            log_message="Running context enrichment and risk scoring",
+            timeline_step_id="2",
+            timeline_status="RUNNING",
+        )
+
+        # ── STEP 3b: AI Analysis ────────────────────────────────────────────────────
         _update_scan(
             scan_id,
             progress=50,
@@ -473,11 +530,17 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
             timeline_status="RUNNING",
         )
 
-        enriched_findings = await asyncio.to_thread(
-            _analyze_findings,
+        enriched_findings = await _async_analyze_findings(
+            scan_id,
             raw_findings,
             str(extract_path),
             project_name,
+        )
+
+        _update_scan(
+            scan_id,
+            timeline_step_id="2",
+            timeline_status="COMPLETED",
         )
 
         _update_scan(
@@ -513,7 +576,7 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
             timeline_status="RUNNING",
         )
 
-        summary = _build_summary(enriched_findings)
+        summary = _build_summary(deduplicated)
 
         findings_repo = FindingsRepository()
         storage_id = findings_repo.save_scan(

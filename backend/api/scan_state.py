@@ -1,44 +1,101 @@
 """
-Shared scan state with disk persistence.
-==========================================
-Extracted from api/scans.py to break the circular import between
-api/scans.py ↔ services/scan_orchestrator.py.
-
-State is held in-memory for fast access but flushed to disk after
-every mutation so that uvicorn --reload restarts don't lose it.
-For a multi-worker deployment, replace with Redis or a database.
+Shared scan state with database persistence.
+===========================================
+The API and orchestrator still use the in-memory _scans dict, but it is now
+backed by the SQLAlchemy Scan table so state survives restarts without
+relying on a JSON file.
 """
 
-import json
 import logging
-from pathlib import Path
+from datetime import datetime
+
+from sqlalchemy import select
+
+from backend.db.models import Scan
+from backend.db.session import SessionLocal, init_db
 
 logger = logging.getLogger(__name__)
 
-# ── Persistence file ──────────────────────────────────────────────────────────
-_BASE_DIR = Path(__file__).resolve().parent.parent.parent
-_DATA_DIR = _BASE_DIR / "data"
-_DATA_DIR.mkdir(parents=True, exist_ok=True)
-STATE_FILE = _DATA_DIR / "scan_state.json"
-
-# ── Load from disk on import (i.e. server start) ─────────────────────────────
+# ── Load from database on import (i.e. server start) ───────────────────────
 _scans: dict = {}
 
-if STATE_FILE.exists():
-    try:
-        _scans = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        logger.info("Loaded %d scan(s) from %s", len(_scans), STATE_FILE)
-    except Exception as exc:
-        logger.warning("Could not load scan state from %s: %s", STATE_FILE, exc)
-        _scans = {}
+
+def _load_from_db() -> dict:
+    init_db()
+    with SessionLocal() as session:
+        rows = session.scalars(select(Scan).order_by(Scan.created_at.asc())).all()
+    scans = {}
+    for row in rows:
+        scans[row.id] = {
+            "id": row.id,
+            "scanType": row.scan_type,
+            "target": row.source_url,
+            "status": row.status,
+            "progress": row.progress,
+            "startedAt": row.created_at.isoformat() if row.created_at else None,
+            "completedAt": row.completed_at.isoformat() if row.completed_at else None,
+            "duration": None,
+            "findingsCount": 0,
+            "criticalCount": (row.summary or {}).get("critical", 0),
+            "summary": row.summary or {},
+            "logs": row.logs or [],
+            "timeline": row.timeline or [],
+            "failureReason": None,
+        }
+    return scans
+
+
+_scans = _load_from_db()
+
+
+def _coerce_datetime(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return value
 
 
 def save_state() -> None:
-    """Flush the current _scans dict to disk as JSON."""
+    """Persist the current _scans dict to the database."""
     try:
-        STATE_FILE.write_text(
-            json.dumps(_scans, indent=2, ensure_ascii=False, default=str),
-            encoding="utf-8",
-        )
+        init_db()
+        with SessionLocal() as session:
+            for scan_id, scan_data in _scans.items():
+                scan = session.get(Scan, scan_id)
+                if scan is None:
+                    scan = Scan(
+                        id=scan_id,
+                        status=scan_data.get("status", "QUEUED"),
+                        progress=scan_data.get("progress", 0),
+                        scan_type=scan_data.get("scanType", "unknown"),
+                        project_name=scan_data.get("target") or "unknown",
+                        source_url=scan_data.get("target"),
+                        summary=scan_data.get("summary", {}),
+                        created_at=_coerce_datetime(scan_data.get("startedAt")),
+                        completed_at=_coerce_datetime(scan_data.get("completedAt")),
+                        timeline=scan_data.get("timeline", []),
+                        logs=scan_data.get("logs", []),
+                    )
+                    session.add(scan)
+                else:
+                    scan.status = scan_data.get("status", scan.status)
+                    scan.progress = scan_data.get("progress", scan.progress)
+                    scan.scan_type = scan_data.get("scanType", scan.scan_type)
+                    scan.project_name = scan_data.get("project_name") or scan.project_name
+                    scan.source_url = scan_data.get("target") or scan.source_url
+                    scan.summary = scan_data.get("summary", scan.summary)
+                    scan.timeline = scan_data.get("timeline", scan.timeline)
+                    scan.logs = scan_data.get("logs", scan.logs)
+                    if scan_data.get("completedAt"):
+                        scan.completed_at = _coerce_datetime(scan_data.get("completedAt"))
+                    elif scan_data.get("status") == "COMPLETED":
+                        scan.completed_at = scan.completed_at or scan.created_at
+            session.commit()
     except Exception as exc:
         logger.warning("Could not persist scan state: %s", exc)
