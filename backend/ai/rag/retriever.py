@@ -3,16 +3,13 @@ RAG Retriever
 =============
 Wraps the ChromaDB vector store and provides context-aware
 similarity search for security findings.
-
-Given a finding with cwe_id, owasp category, and rule description,
-it retrieves the top-k most relevant knowledge base documents to
-augment the LLM prompt with authoritative security context.
 """
 
 import logging
 from typing import List, Optional
 
-from langchain.schema import Document
+# LangChain 0.3.x — correct import path
+from langchain_core.documents import Document
 
 from .knowledge_base import KnowledgeBase
 
@@ -86,7 +83,6 @@ class RAGRetriever:
         """
         parts = []
 
-        # Direct CWE/OWASP signals — highest precision
         cwe = (
             finding.get("cwe")
             or finding.get("finding", {}).get("cwe")
@@ -101,7 +97,6 @@ class RAGRetriever:
         if owasp:
             parts.append(str(owasp))
 
-        # Rule/check ID gives semantic signal (e.g. "sql-injection", "xss")
         rule_id = (
             finding.get("rule_id")
             or finding.get("check_id")
@@ -110,12 +105,11 @@ class RAGRetriever:
         if rule_id:
             parts.append(rule_id.replace("-", " ").replace(".", " ").replace("_", " "))
 
-        # Vulnerability message
         message = (
             finding.get("message")
             or finding.get("finding", {}).get("message", "")
         )
         if message:
-            parts.append(message[:200])  # cap length
+            parts.append(message[:200])
 
         return " ".join(parts)

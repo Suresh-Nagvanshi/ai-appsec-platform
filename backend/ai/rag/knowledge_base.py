@@ -5,21 +5,19 @@ Ingests and indexes security knowledge documents into ChromaDB:
   - CWE definitions (embedded as structured text)
   - OWASP Top 10 descriptions
   - MITRE ATT&CK technique summaries
-  - NVD/CVE reference snippets (future: live feed)
 
 Usage:
     kb = KnowledgeBase()
-    kb.build()          # First run: downloads + indexes all docs
+    kb.build()          # First run: indexes all docs into ChromaDB
     kb.is_ready()       # True if vector store already populated
 """
 
-import json
 import logging
-import os
 from pathlib import Path
 from typing import List, Dict
 
-from langchain.schema import Document
+# LangChain 0.3.x — correct import paths
+from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
@@ -30,7 +28,7 @@ CHROMA_DIR = KB_DIR / "chroma_store"
 
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # ~80MB, runs locally, no API key needed
 
-# ── Embedded CWE definitions (top 25 most dangerous) ─────────────────────────
+# ── Embedded CWE definitions (top 15 most dangerous) ─────────────────────────
 CWE_DEFINITIONS: Dict[str, Dict] = {
     "CWE-79": {
         "name": "Cross-site Scripting (XSS)",
@@ -176,7 +174,7 @@ OWASP_TOP10: Dict[str, Dict] = {
     },
     "A04:2021": {
         "name": "Insecure Design",
-        "description": "A broad category representing different weaknesses, expressed as missing or ineffective control design. Insecure design cannot be fixed by a perfect implementation.",
+        "description": "A broad category representing different weaknesses, expressed as missing or ineffective control design.",
         "common_cwes": ["CWE-434", "CWE-284"],
         "prevention": "Use threat modeling. Implement secure design patterns and principles. Use reference architectures.",
     },
@@ -188,7 +186,7 @@ OWASP_TOP10: Dict[str, Dict] = {
     },
     "A06:2021": {
         "name": "Vulnerable and Outdated Components",
-        "description": "Components, such as libraries, frameworks, and other software modules, run with the same privileges as the application. Vulnerable components can undermine application defenses.",
+        "description": "Components such as libraries, frameworks, and other software modules run with the same privileges as the application.",
         "common_cwes": ["CWE-1035", "CWE-937"],
         "prevention": "Remove unused dependencies. Continuously inventory component versions. Monitor CVE databases. Use SCA tools.",
     },
@@ -200,13 +198,13 @@ OWASP_TOP10: Dict[str, Dict] = {
     },
     "A08:2021": {
         "name": "Software and Data Integrity Failures",
-        "description": "Software and data integrity failures relate to code and infrastructure that does not protect against integrity violations. Insecure deserialization is a key example.",
+        "description": "Software and data integrity failures relate to code and infrastructure that does not protect against integrity violations.",
         "common_cwes": ["CWE-502", "CWE-494"],
         "prevention": "Use digital signatures to verify software. Ensure CI/CD pipelines have integrity checks. Do not deserialize from untrusted sources.",
     },
     "A09:2021": {
         "name": "Security Logging and Monitoring Failures",
-        "description": "Without logging and monitoring, breaches cannot be detected. Insufficient logging and monitoring allows attackers to further attack systems.",
+        "description": "Without logging and monitoring, breaches cannot be detected.",
         "common_cwes": ["CWE-778", "CWE-117"],
         "prevention": "Ensure all login, access control, server-side input validation failures are logged. Establish effective monitoring and alerting.",
     },
@@ -267,7 +265,7 @@ class KnowledgeBase:
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
-        self._vectorstore: Chroma | None = None
+        self._vectorstore = None
 
     def is_ready(self) -> bool:
         """Returns True if the Chroma store already has documents."""

@@ -14,11 +14,13 @@ Architecture:
     StrOutputParser → ResponseParser
 """
 
+import json
 import logging
 import os
 from typing import Dict, List
 
-from langchain.schema import Document
+# LangChain 0.3.x — correct import paths
+from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
@@ -102,8 +104,6 @@ class RAGChain:
         Run the full RAG pipeline for a single finding.
         Returns raw LLM text (JSON string).
         """
-        import json
-
         # 1. Retrieve relevant security knowledge
         docs: List[Document] = self.retriever.retrieve(finding, top_k=4)
         retrieved_context = self.retriever.format_context(docs)
