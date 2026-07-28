@@ -19,7 +19,8 @@ from typing import List, Dict
 # LangChain 0.3.x — correct import paths
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+# langchain-huggingface replaces the deprecated langchain_community path
+from langchain_huggingface import HuggingFaceEmbeddings
 
 logger = logging.getLogger(__name__)
 

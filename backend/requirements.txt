@@ -12,8 +12,14 @@ langchain-community==0.3.24
 langchain-groq==0.3.2
 
 # ── RAG — Vector store + Embeddings ──────────────────────────────────────────
-chromadb==0.5.23
+# chromadb 0.5.7 is the last version that bundles a pre-built hnswlib wheel
+# for Python 3.13 on Windows — versions 0.5.8+ require compiling chroma-hnswlib
+# from C++ source (needs MSVC / Visual Studio Build Tools).
+chromadb==0.5.7
 sentence-transformers==3.4.1
+# langchain-huggingface replaces the deprecated langchain_community.embeddings
+# HuggingFaceEmbeddings path (deprecated in LangChain 0.2.2, removed in 1.0).
+langchain-huggingface==0.1.2
 # numpy>=2.1.0 ships pre-built wheels for Python 3.13 on Windows —
 # no C compiler / Visual Studio required.
 numpy>=2.1.0,<3.0.0
@@ -24,7 +30,9 @@ gitpython==3.1.43
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlalchemy==2.0.35
 alembic==1.13.2
-psycopg2-binary==2.9.9
+# psycopg2-binary 2.9.10 ships a pre-built win_amd64 wheel for Python 3.13.
+# 2.9.9 did not include a cp313 wheel and fell back to compiling from source.
+psycopg2-binary==2.9.10
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 pydantic==2.9.2
