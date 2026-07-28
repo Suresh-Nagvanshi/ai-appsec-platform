@@ -18,8 +18,8 @@ Wires the full scanning pipeline:
   model_router.route()       ← choose fast vs deep LLM
        │
        v
-  analysis_engine.analyze()  ← AI analysis per finding
-       │
+  VulnAnalysisChain.analyze()  ← RAG-augmented AI analysis (LangChain + ChromaDB + Groq)
+       │                          Falls back to legacy AnalysisEngine on failure
        v
   deduplicator.deduplicate() ← group duplicates
        │
@@ -39,7 +39,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -48,11 +47,11 @@ from uuid import uuid4
 
 from git import Repo
 
-# ── Internal modules ───────────────────────────────────────────────────────────────────
+# ── Internal modules ──────────────────────────────────────────────────────────
 from backend.enrichment.context_builder import ContextBuilder
 from backend.risk.risk_scorer import RiskScorer
 from backend.ai.model_router import ModelRouter
-from backend.ai.analysis_engine import AnalysisEngine
+from backend.ai.chains.vuln_analysis_chain import VulnAnalysisChain
 from backend.deduplication.finding_deduplicator import FindingDeduplicator
 from backend.storage.findings_repository import FindingsRepository
 
@@ -61,7 +60,7 @@ from backend.api.scan_state import _scans, save_state
 
 logger = logging.getLogger(__name__)
 
-# ── Directory layout (mirrors main.py) ──────────────────────────────────────────────────
+# ── Directory layout ──────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 EXTRACT_DIR = BASE_DIR / "extracted"
@@ -72,7 +71,7 @@ for _d in (UPLOAD_DIR, EXTRACT_DIR, RESULT_DIR, REPO_DIR):
     _d.mkdir(exist_ok=True)
 
 
-# ── Tiny helpers ────────────────────────────────────────────────────────────────────────
+# ── Tiny helpers ──────────────────────────────────────────────────────────────
 
 def _now_str() -> str:
     return datetime.utcnow().strftime("%H:%M:%S")
@@ -114,24 +113,17 @@ def _update_scan(
                 break
     if extra:
         scan.update(extra)
-
-    # Persist to disk so state survives server restarts
     save_state()
 
 
-# ── Semgrep runner (sync, called via asyncio.to_thread) ──────────────────────────────
+# ── Semgrep runner (sync, called via asyncio.to_thread) ───────────────────────
 
 def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
     """
     Execute Semgrep on *scan_path*, write JSON to *result_file*.
     Returns the parsed Semgrep results dict.
     Raises RuntimeError on failure.
-
-    Uses the `semgrep` binary directly. The `python -m semgrep` invocation
-    was deprecated in Semgrep 1.38.0 and removed in later versions.
     """
-    # We MUST set PYTHONUTF8=1 so the pip-installed semgrep on Windows doesn't
-    # crash with cp1252 UnicodeEncodeError when downloading/writing registry rules.
     env = os.environ.copy()
     env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "LANG": "en_US.UTF-8"})
 
@@ -162,7 +154,7 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
         return json.load(fh)
 
 
-# ── AI analysis (sync, called via asyncio.to_thread) ─────────────────────────────────
+# ── AI analysis (sync, called via asyncio.to_thread) ──────────────────────────
 
 def _analyze_findings(
     raw_findings: List[dict],
@@ -171,20 +163,26 @@ def _analyze_findings(
 ) -> List[dict]:
     """
     Runs the full per-finding pipeline:
-      context_builder → risk_scorer → model_router → analysis_engine
+      context_builder → risk_scorer → model_router → VulnAnalysisChain (RAG)
 
-    Returns a list of fully-enriched finding dicts ready for
-    deduplication and persistence.
+    VulnAnalysisChain is RAG-augmented: it retrieves relevant CWE/OWASP/MITRE
+    context from ChromaDB before calling Groq, producing richer analysis with
+    authoritative references and CVSS estimates.
+
+    Falls back to legacy AnalysisEngine automatically on any RAG failure.
     """
     context_builder = ContextBuilder()
     risk_scorer = RiskScorer()
     model_router = ModelRouter()
 
+    # Instantiate once — shares the RAGRetriever + ChromaDB connection
+    rag_chain = VulnAnalysisChain()
+
     results: List[dict] = []
 
     for raw in raw_findings:
         try:
-            # 1. Context enrichment (normalises + adds snippet/framework/endpoint)
+            # 1. Context enrichment
             enriched = context_builder.build(
                 finding=raw,
                 project_path=project_path,
@@ -196,13 +194,15 @@ def _analyze_findings(
             risk = risk_scorer.calculate(enriched)
             enriched["risk"] = risk
 
-            # 3. Model routing (select fast vs deep LLM)
+            # 3. Model routing
             routing = model_router.route(enriched)
             selected_model = routing["selected_model"]["model_name"]
 
-            # 4. AI analysis with the routed model
-            engine = AnalysisEngine(model_name=selected_model)
-            ai_result = engine.analyze(enriched)
+            # 4. RAG-augmented AI analysis
+            #    VulnAnalysisChain uses the routed model, retries 3x, then
+            #    falls back to legacy AnalysisEngine — transparent to caller.
+            rag_chain.model_name = selected_model
+            ai_result = rag_chain.analyze(enriched)
             enriched["ai_analysis"] = ai_result
             enriched["model_routing"] = routing
 
@@ -210,7 +210,6 @@ def _analyze_findings(
 
         except Exception as exc:
             logger.error("Per-finding analysis failed: %s", exc)
-            # Still include the raw finding so nothing is silently lost
             results.append({
                 "finding": raw,
                 "risk": {},
@@ -220,7 +219,7 @@ def _analyze_findings(
     return results
 
 
-# ── Main orchestrator ──────────────────────────────────────────────────────────────────────
+# ── GitHub scan ───────────────────────────────────────────────────────────────
 
 async def run_github_scan(scan_id: str, repo_url: str) -> None:
     """
@@ -235,106 +234,61 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
         repo_path = REPO_DIR / repo_name
         result_file = RESULT_DIR / f"{repo_name}_github_{scan_id}.json"
 
-        # ── STEP 0: RUNNING ──────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            status="RUNNING",
-            progress=5,
-            log_message=f"Starting GitHub scan for {repo_url}",
-            timeline_step_id="0",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, status="RUNNING", progress=5,
+                     log_message=f"Starting GitHub scan for {repo_url}",
+                     timeline_step_id="0", timeline_status="RUNNING")
 
-        # ── STEP 1: Clone ────────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=10,
-            log_message=f"Cloning repository: {repo_name}",
-        )
+        _update_scan(scan_id, progress=10,
+                     log_message=f"Cloning repository: {repo_name}")
 
         if repo_path.exists():
             shutil.rmtree(repo_path, ignore_errors=True)
 
         await asyncio.to_thread(Repo.clone_from, repo_url, repo_path)
 
-        _update_scan(
-            scan_id,
-            progress=20,
-            log_message="Repository cloned successfully",
-            timeline_step_id="0",
-            timeline_status="COMPLETED",
-        )
+        _update_scan(scan_id, progress=20,
+                     log_message="Repository cloned successfully",
+                     timeline_step_id="0", timeline_status="COMPLETED")
 
-        # ── STEP 2: Semgrep ──────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=25,
-            log_message="Running Semgrep static analysis",
-            timeline_step_id="1",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, progress=25,
+                     log_message="Running Semgrep static analysis",
+                     timeline_step_id="1", timeline_status="RUNNING")
 
-        semgrep_data = await asyncio.to_thread(
-            _run_semgrep, repo_path, result_file
-        )
+        semgrep_data = await asyncio.to_thread(_run_semgrep, repo_path, result_file)
         raw_findings: List[dict] = semgrep_data.get("results", [])
 
-        _update_scan(
-            scan_id,
-            progress=45,
-            log_message=f"Semgrep complete — {len(raw_findings)} raw findings",
-            timeline_step_id="1",
-            timeline_status="COMPLETED",
-        )
+        _update_scan(scan_id, progress=45,
+                     log_message=f"Semgrep complete — {len(raw_findings)} raw findings",
+                     timeline_step_id="1", timeline_status="COMPLETED")
 
-        # ── STEP 3: Context + Risk + AI ─────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=50,
-            log_message="Running AI analysis pipeline",
-            timeline_step_id="3",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, progress=50,
+                     log_message="Running RAG-augmented AI analysis pipeline",
+                     timeline_step_id="3", timeline_status="RUNNING")
 
         enriched_findings = await asyncio.to_thread(
-            _analyze_findings,
-            raw_findings,
-            str(repo_path),
-            repo_name,
+            _analyze_findings, raw_findings, str(repo_path), repo_name
         )
 
-        _update_scan(
-            scan_id,
-            progress=75,
-            log_message=f"AI analysis complete — {len(enriched_findings)} findings analysed",
-            timeline_step_id="3",
-            timeline_status="COMPLETED",
-        )
+        rag_count = sum(1 for f in enriched_findings
+                        if f.get("ai_analysis", {}).get("rag_enhanced"))
+        _update_scan(scan_id, progress=75,
+                     log_message=(
+                         f"AI analysis complete — {len(enriched_findings)} findings analysed "
+                         f"({rag_count} RAG-enhanced)"
+                     ),
+                     timeline_step_id="3", timeline_status="COMPLETED")
 
-        # ── STEP 4: Deduplication ────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=80,
-            log_message="Deduplicating findings",
-        )
+        _update_scan(scan_id, progress=80, log_message="Deduplicating findings")
 
         deduplicator = FindingDeduplicator()
         deduplicated = deduplicator.deduplicate(enriched_findings)
 
-        _update_scan(
-            scan_id,
-            progress=85,
-            log_message=f"Deduplication complete — {len(deduplicated)} unique findings",
-        )
+        _update_scan(scan_id, progress=85,
+                     log_message=f"Deduplication complete — {len(deduplicated)} unique findings")
 
-        # ── STEP 5: Persist ────────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=90,
-            log_message="Saving findings to repository",
-            timeline_step_id="4",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, progress=90,
+                     log_message="Saving findings to repository",
+                     timeline_step_id="4", timeline_status="RUNNING")
 
         summary = _build_summary(enriched_findings)
 
@@ -350,14 +304,10 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
             },
         )
 
-        # ── STEP 6: COMPLETED ───────────────────────────────────────────────────
         _update_scan(
-            scan_id,
-            status="COMPLETED",
-            progress=100,
+            scan_id, status="COMPLETED", progress=100,
             log_message="Scan completed successfully",
-            timeline_step_id="4",
-            timeline_status="COMPLETED",
+            timeline_step_id="4", timeline_status="COMPLETED",
             extra={
                 "findingsCount": len(deduplicated),
                 "criticalCount": summary.get("critical", 0),
@@ -370,34 +320,30 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
         logger.info("Scan %s completed. %d findings persisted.", scan_id, len(deduplicated))
 
     except subprocess.TimeoutExpired:
-        _update_scan(
-            scan_id,
-            status="FAILED",
-            progress=0,
-            log_message="Scan timed out after 600 seconds",
-            log_level="ERROR",
-            extra={"failureReason": "Semgrep timed out"},
-        )
+        _update_scan(scan_id, status="FAILED", progress=0,
+                     log_message="Scan timed out after 600 seconds",
+                     log_level="ERROR",
+                     extra={"failureReason": "Semgrep timed out"})
     except Exception as exc:
         logger.exception("Scan %s failed: %s", scan_id, exc)
-        _update_scan(
-            scan_id,
-            status="FAILED",
-            progress=0,
-            log_message=f"Scan failed: {exc}",
-            log_level="ERROR",
-            extra={"failureReason": str(exc)},
-        )
+        _update_scan(scan_id, status="FAILED", progress=0,
+                     log_message=f"Scan failed: {exc}",
+                     log_level="ERROR",
+                     extra={"failureReason": str(exc)})
     finally:
         if repo_path and repo_path.exists():
             shutil.rmtree(repo_path, ignore_errors=True)
 
+
+# ── ZIP scan ──────────────────────────────────────────────────────────────────
 
 async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
     """
     Full ZIP upload scan pipeline.
     Runs as a FastAPI BackgroundTask so the HTTP response returns immediately.
     """
+    import zipfile
+
     safe_name = Path(filename).name
     project_name = safe_name.replace(".zip", "")
     zip_path = UPLOAD_DIR / safe_name
@@ -405,24 +351,11 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
     result_file = RESULT_DIR / f"{project_name}_zip_{scan_id}.json"
 
     try:
-        # ── STEP 0: RUNNING ──────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            status="RUNNING",
-            progress=5,
-            log_message=f"Starting ZIP scan for {safe_name}",
-            timeline_step_id="0",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, status="RUNNING", progress=5,
+                     log_message=f"Starting ZIP scan for {safe_name}",
+                     timeline_step_id="0", timeline_status="RUNNING")
 
-        # ── STEP 1: Extract ───────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=10,
-            log_message=f"Extracting ZIP: {safe_name}",
-        )
-
-        import zipfile
+        _update_scan(scan_id, progress=10, log_message=f"Extracting ZIP: {safe_name}")
 
         zip_path.write_bytes(zip_bytes)
         extract_path.mkdir(exist_ok=True)
@@ -434,84 +367,49 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
                     raise ValueError(f"Unsafe ZIP entry detected: {member}")
             zf.extractall(extract_path)
 
-        _update_scan(
-            scan_id,
-            progress=20,
-            log_message="ZIP extracted successfully",
-            timeline_step_id="0",
-            timeline_status="COMPLETED",
-        )
+        _update_scan(scan_id, progress=20,
+                     log_message="ZIP extracted successfully",
+                     timeline_step_id="0", timeline_status="COMPLETED")
 
-        # ── STEP 2: Semgrep ──────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=25,
-            log_message="Running Semgrep static analysis",
-            timeline_step_id="1",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, progress=25,
+                     log_message="Running Semgrep static analysis",
+                     timeline_step_id="1", timeline_status="RUNNING")
 
-        semgrep_data = await asyncio.to_thread(
-            _run_semgrep, extract_path, result_file
-        )
+        semgrep_data = await asyncio.to_thread(_run_semgrep, extract_path, result_file)
         raw_findings: List[dict] = semgrep_data.get("results", [])
 
-        _update_scan(
-            scan_id,
-            progress=45,
-            log_message=f"Semgrep complete — {len(raw_findings)} raw findings",
-            timeline_step_id="1",
-            timeline_status="COMPLETED",
-        )
+        _update_scan(scan_id, progress=45,
+                     log_message=f"Semgrep complete — {len(raw_findings)} raw findings",
+                     timeline_step_id="1", timeline_status="COMPLETED")
 
-        # ── STEP 3: Context + Risk + AI ─────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=50,
-            log_message="Running AI analysis pipeline",
-            timeline_step_id="3",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, progress=50,
+                     log_message="Running RAG-augmented AI analysis pipeline",
+                     timeline_step_id="3", timeline_status="RUNNING")
 
         enriched_findings = await asyncio.to_thread(
-            _analyze_findings,
-            raw_findings,
-            str(extract_path),
-            project_name,
+            _analyze_findings, raw_findings, str(extract_path), project_name
         )
 
-        _update_scan(
-            scan_id,
-            progress=75,
-            log_message=f"AI analysis complete — {len(enriched_findings)} findings analysed",
-            timeline_step_id="3",
-            timeline_status="COMPLETED",
-        )
+        rag_count = sum(1 for f in enriched_findings
+                        if f.get("ai_analysis", {}).get("rag_enhanced"))
+        _update_scan(scan_id, progress=75,
+                     log_message=(
+                         f"AI analysis complete — {len(enriched_findings)} findings analysed "
+                         f"({rag_count} RAG-enhanced)"
+                     ),
+                     timeline_step_id="3", timeline_status="COMPLETED")
 
-        # ── STEP 4: Deduplication ────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=80,
-            log_message="Deduplicating findings",
-        )
+        _update_scan(scan_id, progress=80, log_message="Deduplicating findings")
 
         deduplicator = FindingDeduplicator()
         deduplicated = deduplicator.deduplicate(enriched_findings)
 
-        _update_scan(
-            scan_id,
-            progress=85,
-            log_message=f"Deduplication complete — {len(deduplicated)} unique findings",
-        )
+        _update_scan(scan_id, progress=85,
+                     log_message=f"Deduplication complete — {len(deduplicated)} unique findings")
 
-        # ── STEP 5: Persist ────────────────────────────────────────────────────────
-        _update_scan(
-            scan_id,
-            progress=90,
-            log_message="Saving findings to repository",
-            timeline_step_id="4",
-            timeline_status="RUNNING",
-        )
+        _update_scan(scan_id, progress=90,
+                     log_message="Saving findings to repository",
+                     timeline_step_id="4", timeline_status="RUNNING")
 
         summary = _build_summary(enriched_findings)
 
@@ -527,14 +425,10 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
             },
         )
 
-        # ── STEP 6: COMPLETED ───────────────────────────────────────────────────
         _update_scan(
-            scan_id,
-            status="COMPLETED",
-            progress=100,
+            scan_id, status="COMPLETED", progress=100,
             log_message="Scan completed successfully",
-            timeline_step_id="4",
-            timeline_status="COMPLETED",
+            timeline_step_id="4", timeline_status="COMPLETED",
             extra={
                 "findingsCount": len(deduplicated),
                 "criticalCount": summary.get("critical", 0),
@@ -547,24 +441,16 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
         logger.info("ZIP scan %s completed. %d findings persisted.", scan_id, len(deduplicated))
 
     except subprocess.TimeoutExpired:
-        _update_scan(
-            scan_id,
-            status="FAILED",
-            progress=0,
-            log_message="Scan timed out after 600 seconds",
-            log_level="ERROR",
-            extra={"failureReason": "Semgrep timed out"},
-        )
+        _update_scan(scan_id, status="FAILED", progress=0,
+                     log_message="Scan timed out after 600 seconds",
+                     log_level="ERROR",
+                     extra={"failureReason": "Semgrep timed out"})
     except Exception as exc:
         logger.exception("ZIP scan %s failed: %s", scan_id, exc)
-        _update_scan(
-            scan_id,
-            status="FAILED",
-            progress=0,
-            log_message=f"Scan failed: {exc}",
-            log_level="ERROR",
-            extra={"failureReason": str(exc)},
-        )
+        _update_scan(scan_id, status="FAILED", progress=0,
+                     log_message=f"Scan failed: {exc}",
+                     log_level="ERROR",
+                     extra={"failureReason": str(exc)})
     finally:
         if extract_path.exists():
             shutil.rmtree(extract_path, ignore_errors=True)
@@ -572,7 +458,7 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
             zip_path.unlink(missing_ok=True)
 
 
-# ── Utility helpers ──────────────────────────────────────────────────────────────────────
+# ── Utility helpers ───────────────────────────────────────────────────────────
 
 def _build_summary(enriched_findings: List[dict]) -> dict:
     """Build severity count summary from enriched findings."""

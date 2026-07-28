@@ -7,7 +7,7 @@ Security hardening applied in this revision:
      configured via env var. The wildcard+credentials combination that browsers
      reject has been removed. Default dev origin: http://localhost:3000.
 
-  2. API key middleware: all routers (scans, findings, reports, repositories)
+  2. API key middleware: all routers (scans, findings, reports, repositories, fix)
      are protected via the require_api_key FastAPI dependency.  The /health
      endpoint is intentionally exempted.
      Set API_KEY=<secret> in .env to enable.  If API_KEY is absent the
@@ -28,25 +28,23 @@ from backend.routes.findings import router as findings_router
 from backend.routes.reports import router as reports_router
 from backend.api.scans import router as scans_router
 from backend.api.repositories import router as repositories_router
+from backend.api.fix import router as fix_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
 
-# CORS origins: comma-separated list in CORS_ORIGINS env var.
-# Default: only the local Next.js dev server.
 _raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000")
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
-
-# allow_credentials is safe only when origins are explicitly listed (not ["*"]).
-# We derive this automatically: if the default dev-only list is used, credentials
-# are still fine because it is a specific origin, not a wildcard.
 _USE_CREDENTIALS = "*" not in ALLOWED_ORIGINS
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="AI AppSec Platform",
-    version="0.1.0",
-    description="AI-powered application security platform combining Semgrep with contextual AI analysis.",
+    version="0.2.0",
+    description=(
+        "AI-powered application security platform combining Semgrep static analysis "
+        "with LangChain + RAG contextual vulnerability analysis (CWE / OWASP / MITRE ATT&CK)."
+    ),
 )
 
 app.add_middleware(
@@ -84,10 +82,16 @@ app.include_router(
     tags=["Repositories"],
     dependencies=_auth,
 )
+app.include_router(
+    fix_router,
+    prefix="/api/fix",
+    tags=["Fix Suggestions"],
+    dependencies=_auth,
+)
 
 
 # ── Public endpoints ──────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 def health_check():
     """Liveness probe — intentionally exempted from API key auth."""
-    return {"status": "ok", "service": "ai-appsec-platform"}
+    return {"status": "ok", "service": "ai-appsec-platform", "version": "0.2.0"}

@@ -1,0 +1,3 @@
+# ChromaDB vector store persists here after first run.
+# This directory is git-tracked (empty) so the path exists on fresh clones.
+# The chroma_store/ subdirectory is git-ignored (see .gitignore).
