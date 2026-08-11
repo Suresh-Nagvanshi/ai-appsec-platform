@@ -193,3 +193,5 @@ temp/
 .claude/
 AGENTS.md
 CLAUDE.md
+docker-compose.yml
+alembic.ini
