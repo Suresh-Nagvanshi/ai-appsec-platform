@@ -83,7 +83,7 @@ export function SecurityPostureChart() {
                   outerRadius={110}
                   paddingAngle={3}
                   label={({ name, percent }) =>
-                    `${name} ${(percent * 100).toFixed(0)}%`
+                    `${name} ${typeof percent === "number" ? `${(percent * 100).toFixed(0)}%` : ""}`
                   }
                   labelLine={false}
                 >
@@ -92,7 +92,7 @@ export function SecurityPostureChart() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => [value, "Findings"]}
+                  formatter={(value) => [value ?? 0, "Findings"]}
                   contentStyle={{
                     backgroundColor: "#18181b",
                     border: "1px solid #3f3f46",

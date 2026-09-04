@@ -45,13 +45,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from git import Repo
-
 # ── Internal modules ──────────────────────────────────────────────────────────
 from backend.enrichment.context_builder import ContextBuilder
 from backend.risk.risk_scorer import RiskScorer
 from backend.ai.model_router import ModelRouter
-from backend.ai.chains.vuln_analysis_chain import VulnAnalysisChain
 from backend.deduplication.finding_deduplicator import FindingDeduplicator
 from backend.storage.findings_repository import FindingsRepository
 
@@ -102,6 +99,8 @@ def _update_scan(
         return
     if status:
         scan["status"] = status
+        if status == "COMPLETED":
+            scan["completedAt"] = _iso()
     if progress is not None:
         scan["progress"] = progress
     if log_message:
@@ -175,8 +174,17 @@ def _analyze_findings(
     risk_scorer = RiskScorer()
     model_router = ModelRouter()
 
-    # Instantiate once — shares the RAGRetriever + ChromaDB connection
-    rag_chain = VulnAnalysisChain()
+    # AI is optional for local/static scans. Import and initialize it only when
+    # a key is configured so missing AI packages or model downloads cannot stop
+    # Semgrep results from being persisted.
+    rag_chain = None
+    if os.getenv("GROQ_API_KEY"):
+        try:
+            from backend.ai.chains.vuln_analysis_chain import VulnAnalysisChain
+
+            rag_chain = VulnAnalysisChain()
+        except Exception as exc:
+            logger.warning("AI analysis unavailable; continuing without it: %s", exc)
 
     results: List[dict] = []
 
@@ -194,17 +202,15 @@ def _analyze_findings(
             risk = risk_scorer.calculate(enriched)
             enriched["risk"] = risk
 
-            # 3. Model routing
-            routing = model_router.route(enriched)
-            selected_model = routing["selected_model"]["model_name"]
-
-            # 4. RAG-augmented AI analysis
-            #    VulnAnalysisChain uses the routed model, retries 3x, then
-            #    falls back to legacy AnalysisEngine — transparent to caller.
-            rag_chain.model_name = selected_model
-            ai_result = rag_chain.analyze(enriched)
-            enriched["ai_analysis"] = ai_result
-            enriched["model_routing"] = routing
+            # 3. Model routing and optional RAG-augmented AI analysis
+            if rag_chain is not None:
+                routing = model_router.route(enriched)
+                selected_model = routing["selected_model"]["model_name"]
+                rag_chain.model_name = selected_model
+                enriched["ai_analysis"] = rag_chain.analyze(enriched)
+                enriched["model_routing"] = routing
+            else:
+                enriched["ai_analysis"] = _local_analysis(enriched)
 
             results.append(enriched)
 
@@ -219,6 +225,23 @@ def _analyze_findings(
     return results
 
 
+def _local_analysis(finding: dict) -> dict:
+    """Return deterministic metadata when external AI is not configured."""
+    raw = finding.get("finding", {})
+    return {
+        "summary": raw.get("message", "Static analysis finding"),
+        "secure_fix": "Review the finding and apply the scanner's remediation guidance.",
+        "developer_remediation_steps": [
+            "Confirm the finding against the reported source location.",
+            "Apply the recommended secure coding pattern.",
+            "Re-run the scan to verify the issue is resolved.",
+        ],
+        "model": "local-static-analysis",
+        "rag_enhanced": False,
+        "ai_unavailable": True,
+    }
+
+
 # ── GitHub scan ───────────────────────────────────────────────────────────────
 
 async def run_github_scan(scan_id: str, repo_url: str) -> None:
@@ -226,6 +249,24 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
     Full GitHub repository scan pipeline.
     Runs as a FastAPI BackgroundTask so the HTTP response returns immediately.
     """
+    # Keep GitPython out of API startup so ZIP scans remain available when Git
+    # is not installed on the host. GitPython also needs an explicit path on
+    # Windows when Git is installed but not present on PATH.
+    git_executable = shutil.which("git")
+    if not git_executable:
+        for candidate in (
+            r"C:\Program Files\Git\cmd\git.exe",
+            r"C:\Program Files\Git\bin\git.exe",
+            r"C:\Program Files (x86)\Git\cmd\git.exe",
+        ):
+            if Path(candidate).exists():
+                git_executable = candidate
+                break
+    if not git_executable:
+        raise RuntimeError("Git executable not found; install Git and add it to PATH")
+    os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = git_executable
+    from git import Repo
+
     repo_path: Optional[Path] = None
     result_file: Optional[Path] = None
 
@@ -262,8 +303,11 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
                      timeline_step_id="1", timeline_status="COMPLETED")
 
         _update_scan(scan_id, progress=50,
-                     log_message="Running RAG-augmented AI analysis pipeline",
-                     timeline_step_id="3", timeline_status="RUNNING")
+                 log_message="Running context enrichment",
+                 timeline_step_id="2", timeline_status="RUNNING")
+        _update_scan(scan_id, progress=50,
+                 log_message="Running RAG-augmented AI analysis pipeline",
+                 timeline_step_id="3", timeline_status="RUNNING")
 
         enriched_findings = await asyncio.to_thread(
             _analyze_findings, raw_findings, str(repo_path), repo_name
@@ -276,6 +320,9 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
                          f"AI analysis complete — {len(enriched_findings)} findings analysed "
                          f"({rag_count} RAG-enhanced)"
                      ),
+                     timeline_step_id="2", timeline_status="COMPLETED")
+        _update_scan(scan_id, progress=75,
+                     log_message="Context enrichment complete",
                      timeline_step_id="3", timeline_status="COMPLETED")
 
         _update_scan(scan_id, progress=80, log_message="Deduplicating findings")

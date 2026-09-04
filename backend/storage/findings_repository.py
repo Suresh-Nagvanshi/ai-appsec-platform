@@ -99,6 +99,16 @@ class FindingsRepository:
         except Exception:
             return None
 
+    def list_scans(self) -> List[dict]:
+        """Return persisted scan records, newest first."""
+        scans: List[dict] = []
+        for scan_file in sorted(_BASE_DIR.glob("*.json"), reverse=True):
+            try:
+                scans.append(json.loads(scan_file.read_text(encoding="utf-8")))
+            except Exception:
+                continue
+        return scans
+
     # ── Mutate ─────────────────────────────────────────────────────────────
 
     def update_finding_status(self, finding_id: str, status: str) -> bool:

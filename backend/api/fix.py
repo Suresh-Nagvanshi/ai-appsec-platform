@@ -13,20 +13,16 @@ Authentication: X-API-Key header (via require_api_key dependency in main.py)
 """
 
 import logging
+import os
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
-from backend.ai.chains.fix_suggestion_chain import FixSuggestionChain
 from backend.storage.findings_repository import FindingsRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Instantiate once at module level — reuses RAGRetriever + ChromaDB connection
-_fix_chain = FixSuggestionChain()
-
 
 @router.get(
     "/{scan_id}/{finding_index}",
@@ -59,7 +55,7 @@ async def get_fix_suggestion(
             detail=f"Scan '{scan_id}' not found.",
         )
 
-    results = scan.get("results", [])
+    results = scan.get("findings", [])
     if finding_index < 0 or finding_index >= len(results):
         raise HTTPException(
             status_code=404,
@@ -75,9 +71,18 @@ async def get_fix_suggestion(
     if "representative_finding" in finding:
         finding = finding["representative_finding"]
 
-    # 3. Generate fix via RAG chain
+    # 3. Generate a local fallback unless the optional AI provider is ready.
     try:
-        fix = _fix_chain.generate_fix(finding)
+        if not os.getenv("GROQ_API_KEY"):
+            fix = _local_fix(finding)
+        else:
+            try:
+                from backend.ai.chains.fix_suggestion_chain import FixSuggestionChain
+
+                fix = FixSuggestionChain().generate_fix(finding)
+            except Exception as exc:
+                logger.warning("AI fix unavailable; returning local guidance: %s", exc)
+                fix = _local_fix(finding)
         return {
             "scan_id": scan_id,
             "finding_index": finding_index,
@@ -90,3 +95,18 @@ async def get_fix_suggestion(
             status_code=500,
             detail=f"Fix generation failed: {exc}",
         )
+
+
+def _local_fix(finding: dict) -> Dict[str, Any]:
+    """Return useful deterministic guidance when AI is not configured."""
+    raw = finding.get("finding", finding)
+    return {
+        "language": raw.get("metadata", {}).get("language", "unknown"),
+        "vulnerable_code": raw.get("extra", {}).get("lines", ""),
+        "secure_code": "Apply the scanner rule's recommended remediation at this location.",
+        "explanation": raw.get("extra", {}).get("message", "Review and remediate this finding."),
+        "security_libraries": [],
+        "additional_hardening": [],
+        "testing_guidance": "Re-run the scan and add a regression test for the vulnerable input.",
+        "ai_unavailable": True,
+    }

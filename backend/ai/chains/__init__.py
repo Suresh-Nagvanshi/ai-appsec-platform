@@ -1,4 +1,5 @@
-from .vuln_analysis_chain import VulnAnalysisChain
-from .fix_suggestion_chain import FixSuggestionChain
+"""AI chain package.
 
-__all__ = ["VulnAnalysisChain", "FixSuggestionChain"]
+Modules are imported explicitly by their callers so optional AI dependencies
+cannot prevent the API from starting.
+"""
