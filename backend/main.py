@@ -29,6 +29,7 @@ from backend.routes.reports import router as reports_router
 from backend.api.scans import router as scans_router
 from backend.api.repositories import router as repositories_router
 from backend.api.fix import router as fix_router
+from backend.api.website_scans import router as website_scans_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
@@ -40,10 +41,11 @@ _USE_CREDENTIALS = "*" not in ALLOWED_ORIGINS
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="AI AppSec Platform",
-    version="0.2.0",
+    version="0.3.0",
     description=(
         "AI-powered application security platform combining Semgrep static analysis "
-        "with LangChain + RAG contextual vulnerability analysis (CWE / OWASP / MITRE ATT&CK)."
+        "with LangChain + RAG contextual vulnerability analysis (CWE / OWASP / MITRE ATT&CK), "
+        "website security scanning, and API security testing."
     ),
 )
 
@@ -88,10 +90,16 @@ app.include_router(
     tags=["Fix Suggestions"],
     dependencies=_auth,
 )
+app.include_router(
+    website_scans_router,
+    prefix="/api/website-scans",
+    tags=["Website Security"],
+    dependencies=_auth,
+)
 
 
 # ── Public endpoints ──────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 def health_check():
     """Liveness probe — intentionally exempted from API key auth."""
-    return {"status": "ok", "service": "ai-appsec-platform", "version": "0.2.0"}
+    return {"status": "ok", "service": "ai-appsec-platform", "version": "0.3.0"}
