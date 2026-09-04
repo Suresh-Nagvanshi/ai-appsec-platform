@@ -1,34 +1,29 @@
 import os
 from pathlib import Path
-from typing import Iterator
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-from backend.db.models import Base
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DB_DIR = BASE_DIR / "database"
+DB_DIR.mkdir(parents=True, exist_ok=True)
 
-_DB_PATH = Path(__file__).resolve().parent.parent.parent / "database" / "appsec.sqlite"
-_DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SQLALCHEMY_DATABASE_URL") or f"sqlite:///{_DB_PATH}"
+DEFAULT_SQLITE_URL = f"sqlite:///{DB_DIR / 'appsec.db'}"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
 
-if _DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(
-        _DATABASE_URL,
-        future=True,
-        connect_args={"check_same_thread": False},
-    )
-else:
-    engine = create_engine(_DATABASE_URL, future=True)
+engine_kwargs = {}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+engine = create_engine(DATABASE_URL, **engine_kwargs)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-
-def init_db() -> None:
+def init_db():
     Base.metadata.create_all(bind=engine)
 
-
-def get_session() -> Iterator[Session]:
-    session = SessionLocal()
+def get_db():
+    db = SessionLocal()
     try:
-        yield session
+        yield db
     finally:
-        session.close()
+        db.close()

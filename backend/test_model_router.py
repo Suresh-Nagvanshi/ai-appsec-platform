@@ -1,68 +1,18 @@
-import json
-from pathlib import Path
+from backend.enrichment.context_builder import ContextBuilder
+from backend.risk.risk_scorer import RiskScorer
+from backend.ai.model_router import ModelRouter
 
-from enrichment.context_builder import ContextBuilder
-from risk.risk_scorer import RiskScorer
-from ai.model_router import ModelRouter
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-results_file = (
-    BASE_DIR
-    / "results"
-    / "WebGoat_github_results.json"
-)
-
-with open(
-    results_file,
-    "r",
-    encoding="utf-8"
-) as file:
-
-    semgrep_results = json.load(file)
-
-findings = semgrep_results.get(
-    "results",
-    []
-)[:5]
-
-builder = ContextBuilder()
-
-scorer = RiskScorer()
-
-router = ModelRouter()
-
-print("\n===== MODEL ROUTING =====\n")
-
-for finding in findings:
-
+def test_model_router(sample_semgrep_finding, sample_project_dir):
+    builder = ContextBuilder()
     enriched = builder.build(
-        finding=finding,
-        project_path=str(
-            BASE_DIR / "repos" / "WebGoat"
-        )
+        finding=sample_semgrep_finding,
+        project_path=str(sample_project_dir)
     )
-
-    risk = scorer.calculate(
-        enriched
-    )
-
-    enriched["risk"] = risk
-
-    route = router.route(
-        enriched
-    )
-
-    print(
-        json.dumps(
-            {
-                "rule_id": enriched["finding"]["rule_id"],
-                "risk_score": risk["risk_score"],
-                "routing": route
-            },
-            indent=4
-        )
-    )
-
-    print("\n" + "=" * 80 + "\n")
+    scorer = RiskScorer()
+    enriched["risk"] = scorer.calculate(enriched)
+    
+    router = ModelRouter()
+    route = router.route(enriched)
+    
+    assert route is not None
+    assert "selected_model" in route

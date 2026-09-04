@@ -89,7 +89,7 @@ export function FindingDetails({
                             text-zinc-100
                             "
                         >
-                            {data.representative_finding?.finding?.check_id || "Untitled"}
+                            {data.title || "Untitled"}
                         </h1>
 
                         <p
@@ -98,14 +98,14 @@ export function FindingDetails({
                             text-zinc-400
                             "
                         >
-                            {data.representative_finding?.finding?.path || "—"}
+                            {data.filePath || "—"}
                         </p>
 
                     </div>
 
                     <SeverityBadge
                         severity={
-                            data.representative_finding?.finding?.extra?.severity || "UNKNOWN"
+                            data.severity || "UNKNOWN"
                         }
                     />
 
@@ -153,7 +153,7 @@ export function FindingDetails({
                         text-sm
                         "
                     >
-                        {data.representative_finding?.finding?.extra?.metadata?.cwe?.[0] || "No CWE"}
+                        {data.cwe || "No CWE"}
                     </div>
 
 
@@ -166,7 +166,7 @@ export function FindingDetails({
                         text-sm
                         "
                     >
-                        {data.representative_finding?.finding?.extra?.metadata?.owasp?.[0] || "No OWASP"}
+                        {data.owasp || "No OWASP"}
                     </div>
 
 

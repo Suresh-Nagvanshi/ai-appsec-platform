@@ -1,0 +1,9 @@
+from .vuln_analysis import VULN_ANALYSIS_SYSTEM, VULN_ANALYSIS_USER
+from .fix_suggestion import FIX_SUGGESTION_SYSTEM, FIX_SUGGESTION_USER
+
+__all__ = [
+    "VULN_ANALYSIS_SYSTEM",
+    "VULN_ANALYSIS_USER",
+    "FIX_SUGGESTION_SYSTEM",
+    "FIX_SUGGESTION_USER",
+]

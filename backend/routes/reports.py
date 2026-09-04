@@ -20,14 +20,17 @@ Fix history:
     security labels so badges render with the correct colour.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from typing import Optional
 
 from backend.storage.findings_repository import FindingsRepository
+from backend.reporting.report_generator import ReportGenerator
 
 router = APIRouter()
 _repo = FindingsRepository()
+_generator = ReportGenerator()
+
 
 # ---------------------------------------------------------------------------
 # Severity normalisation
@@ -200,3 +203,40 @@ def generate_report(payload: ReportRequest):
         "findings":      findings,
         "format":        payload.format,
     }
+
+
+@router.get("/download/{scan_id}")
+def download_report(scan_id: str, format: str = "json"):
+    """
+    Download a formatted security report for a completed scan.
+    Supported formats: json, html, markdown (or md).
+    """
+    scan = _repo.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    raw_findings = scan.get("findings", [])
+    findings = [_flatten_finding(f) for f in raw_findings]
+    scan_data = {**scan, "findings": findings}
+
+    fmt = format.lower()
+    if fmt == "html":
+        content = _generator.generate_html_report(scan_data)
+        media_type = "text/html"
+        filename = f"report_{scan_id}.html"
+    elif fmt in ("markdown", "md"):
+        content = _generator.generate_markdown_report(scan_data)
+        media_type = "text/markdown"
+        filename = f"report_{scan_id}.md"
+    else:
+        import json
+        content = json.dumps(scan_data, indent=2)
+        media_type = "application/json"
+        filename = f"report_{scan_id}.json"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+

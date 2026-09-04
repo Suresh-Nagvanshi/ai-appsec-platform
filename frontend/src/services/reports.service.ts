@@ -80,3 +80,19 @@ export async function generateReport(scanId: string): Promise<Report> {
   });
   return res.data;
 }
+
+/** Download report file as blob and trigger browser file save. */
+export async function downloadReport(scanId: string, format: string = "json"): Promise<void> {
+  const res = await api.get(`/report/download/${scanId}?format=${format}`, {
+    responseType: "blob",
+  });
+  const ext = format === "markdown" || format === "md" ? "md" : format;
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", `report_${scanId}.${ext}`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+

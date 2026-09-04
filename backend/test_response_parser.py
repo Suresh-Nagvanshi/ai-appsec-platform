@@ -1,37 +1,17 @@
-from ai.response_parser import ResponseParser
+from backend.ai.response_parser import ResponseParser
 
-
-fake_response = """
-```json
-{
-  "summary": "Possible SQL injection vulnerability.",
-  "vulnerability_type": "SQL Injection",
-  "exploitability": "High",
-  "attack_scenario": "Attacker injects SQL payloads.",
-  "business_impact": "Database compromise.",
-  "false_positive_probability": "Low",
-  "confidence_reasoning": "Direct string concatenation detected.",
-  "secure_fix": "Use PreparedStatement.",
-  "developer_remediation_steps": [
-    "Use parameterized queries",
-    "Validate input"
-  ],
-  "mitre_attack_mapping": [
-    "T1190"
-  ],
-  "references": [
-    "https://owasp.org/www-community/attacks/SQL_Injection"
-  ]
-}
-
-"""
-
-parser = ResponseParser()
-
-parsed = parser.parse(
-fake_response
-)
-
-print("\n===== PARSED AI RESPONSE =====\n")
-
-print(parsed)
+def test_response_parser():
+    parser = ResponseParser()
+    raw_response = """
+    {
+        "summary": "SQL Injection found",
+        "attack_scenario": "Attacker injects SQL payload",
+        "business_impact": "Data breach",
+        "secure_fix": "Use prepared statements",
+        "developer_remediation_steps": ["Use PreparedStatement"],
+        "mitre_attack_mapping": ["T1190"]
+    }
+    """
+    parsed = parser.parse(raw_response)
+    assert parsed is not None
+    assert parsed.get("summary") == "SQL Injection found"

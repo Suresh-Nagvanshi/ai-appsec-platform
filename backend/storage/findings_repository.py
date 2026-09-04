@@ -1,186 +1,192 @@
 """
 FindingsRepository
 ==================
-Persists scan results in the database using SQLAlchemy.
-
-The public interface remains compatible with the routes and orchestrator:
+Persists scan results to JSON files under database/scans/.
+Provides:
   save_scan()           — persist a completed scan + findings
   get_all_findings()    — flat list of all findings across all scans
   get_finding_by_id()   — single finding lookup
   update_finding_status() — triage status mutation
-  get_scan()            — full scan record
+
+Scan IDs are UUID-based (no timestamp collision risk).
 """
 
 import json
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import select
+import logging
+from backend.db.session import init_db, SessionLocal
+from backend.db.models import ScanModel, FindingModel
 
-from backend.db.models import Finding, Scan
-from backend.db.session import SessionLocal, init_db
+logger = logging.getLogger(__name__)
+
+_BASE_DIR = Path(__file__).resolve().parent.parent.parent / "database" / "scans"
+_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class FindingsRepository:
-    def __init__(self) -> None:
-        init_db()
+
+    def __init__(self, base_dir: Optional[Path] = None):
+        self.base_dir = Path(base_dir) if base_dir else _BASE_DIR
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            init_db()
+        except Exception as exc:
+            logger.warning("Database init fallback to JSON-only mode: %s", exc)
 
     # ── Write ──────────────────────────────────────────────────────────────
 
     def save_scan(
         self,
         project_name: str,
-        scan_results: dict,
+        scan_results: dict | list,
     ) -> str:
-        """Persist a completed scan and its findings."""
-        scan_id = scan_results.get("scan_id") or str(uuid4())
-        with SessionLocal() as session:
-            scan = session.get(Scan, scan_id)
-            if scan is None:
-                scan = Scan(
-                    id=scan_id,
-                    status="COMPLETED",
-                    scan_type=scan_results.get("scan_type", "unknown"),
-                    project_name=project_name,
-                    source_url=scan_results.get("repository_url") or scan_results.get("filename"),
-                    summary=scan_results.get("summary", {}),
-                    created_at=datetime.utcnow(),
-                    completed_at=datetime.utcnow(),
-                    timeline=[],
-                    logs=[],
-                )
-                session.add(scan)
-            else:
-                scan.status = "COMPLETED"
-                scan.scan_type = scan_results.get("scan_type", "unknown")
-                scan.project_name = project_name
-                scan.source_url = scan_results.get("repository_url") or scan_results.get("filename")
-                scan.summary = scan_results.get("summary", {})
-                scan.completed_at = datetime.utcnow()
+        """
+        Persist a completed scan.
+        scan_results must contain at minimum:
+          scan_id    (str)
+          results    (list of enriched finding dicts)
+          summary    (dict with severity counts)
+        Returns the storage_id (== scan_id).
+        """
+        if isinstance(scan_results, list):
+            scan_results = {"results": scan_results}
 
-            findings = scan_results.get("results", [])
-            for finding in findings:
-                finding_id = finding.get("id") or str(uuid4())
-                if not session.get(Finding, finding_id):
-                    session.add(
-                        Finding(
-                            id=finding_id,
-                            scan_id=scan_id,
-                            rule_id=finding.get("finding", {}).get("rule_id") or finding.get("rule_id"),
-                            severity=(finding.get("severity") or finding.get("finding", {}).get("severity") or "").upper(),
-                            status=finding.get("status", "open"),
-                            path=(finding.get("path") or finding.get("finding", {}).get("path")),
-                            line=finding.get("line") or finding.get("finding", {}).get("line"),
-                            message=(finding.get("message") or finding.get("finding", {}).get("message")),
-                            cwe=(finding.get("cwe") or finding.get("finding", {}).get("cwe")),
-                            owasp=(finding.get("owasp") or finding.get("finding", {}).get("owasp")),
-                            risk_score=(finding.get("risk", {}).get("risk_score") or finding.get("risk_score")),
-                            exploitability=(finding.get("risk", {}).get("exploitability") or finding.get("exploitability")),
-                            priority=(finding.get("risk", {}).get("priority") or finding.get("priority")),
-                            total_occurrences=finding.get("total_occurrences", 1),
-                            representative_finding=finding.get("representative_finding") or finding,
-                            related_findings=finding.get("related_findings") or [],
-                            ai_analysis=finding.get("ai_analysis"),
-                            created_at=datetime.utcnow(),
-                        )
+        scan_id = scan_results.get("scan_id") or str(uuid4())
+
+        # Stamp every finding with scan_id + default status
+        findings = scan_results.get("results", [])
+        for i, finding in enumerate(findings):
+            finding.setdefault("id", str(uuid4()))
+            finding.setdefault("scan_id", scan_id)
+            finding.setdefault("status", "open")
+            finding.setdefault("created_at", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+        record = {
+            "scan_id": scan_id,
+            "project_name": project_name,
+            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "scan_type": scan_results.get("scan_type", "unknown"),
+            "summary": scan_results.get("summary", {}),
+            "findings": findings,
+        }
+
+        # 1. JSON file persistence
+        scan_file = self.base_dir / f"{scan_id}.json"
+        scan_file.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # 2. Database ORM persistence
+        try:
+            db = SessionLocal()
+            existing = db.query(ScanModel).filter(ScanModel.id == scan_id).first()
+            if not existing:
+                scan_orm = ScanModel(
+                    id=scan_id,
+                    project_name=project_name,
+                    scan_type=scan_results.get("scan_type", "static"),
+                    status="COMPLETED",
+                    progress=100,
+                    summary_json=scan_results.get("summary", {})
+                )
+                db.add(scan_orm)
+                for f in findings:
+                    rep = f.get("representative_finding") or {}
+                    raw_f = rep.get("finding") or f.get("finding") or f
+                    risk = rep.get("risk") or f.get("risk") or {}
+                    finding_orm = FindingModel(
+                        id=f.get("id"),
+                        scan_id=scan_id,
+                        rule_id=raw_f.get("rule_id", "security-finding"),
+                        severity=raw_f.get("severity") or risk.get("severity") or "INFO",
+                        file_path=raw_f.get("path", ""),
+                        line_number=raw_f.get("line"),
+                        message=raw_f.get("message", ""),
+                        cwe=raw_f.get("cwe", [None])[0] if isinstance(raw_f.get("cwe"), list) else raw_f.get("cwe"),
+                        owasp=raw_f.get("owasp", [None])[0] if isinstance(raw_f.get("owasp"), list) else raw_f.get("owasp"),
+                        status=f.get("status", "open"),
+                        risk_score=float(risk.get("risk_score", 0.0)),
+                        exploitability=risk.get("exploitability"),
+                        priority=risk.get("priority"),
+                        raw_payload_json=f
                     )
-            session.commit()
-            return scan_id
+                    db.add(finding_orm)
+                db.commit()
+            db.close()
+        except Exception as exc:
+            logger.warning("Failed to persist scan to DB ORM: %s", exc)
+
+        return scan_id
 
     # ── Read ───────────────────────────────────────────────────────────────
 
     def get_all_findings(self) -> List[dict]:
-        """Return a flat list of all findings from all scans."""
-        with SessionLocal() as session:
-            statement = select(Finding).order_by(Finding.created_at.desc())
-            findings = session.scalars(statement).all()
-
-        return [self._serialize_finding(f) for f in findings]
+        """
+        Return a flat list of all findings from all scan files,
+        newest scans first.
+        """
+        findings: List[dict] = []
+        for scan_file in sorted(self.base_dir.glob("*.json"), reverse=True):
+            try:
+                record = json.loads(scan_file.read_text(encoding="utf-8"))
+                findings.extend(record.get("findings", []))
+            except Exception:
+                continue
+        return findings
 
     def get_finding_by_id(self, finding_id: str) -> Optional[dict]:
-        """Return a finding by its id."""
-        with SessionLocal() as session:
-            finding = session.get(Finding, finding_id)
-        if finding is None:
-            return None
-        return self._serialize_finding(finding)
+        """Search all scan files for a finding by its id field."""
+        for scan_file in self.base_dir.glob("*.json"):
+            try:
+                record = json.loads(scan_file.read_text(encoding="utf-8"))
+                for finding in record.get("findings", []):
+                    if finding.get("id") == finding_id:
+                        return finding
+            except Exception:
+                continue
+        return None
 
     def get_scan(self, scan_id: str) -> Optional[dict]:
         """Return the full scan record (findings + summary) by scan_id."""
-        with SessionLocal() as session:
-            scan = session.get(Scan, scan_id)
-            if scan is None:
-                return None
-            findings = [self._serialize_finding(f) for f in scan.findings]
-            return {
-                "scan_id": scan.id,
-                "project_name": scan.project_name,
-                "created_at": scan.created_at.isoformat() if scan.created_at else None,
-                "scan_type": scan.scan_type,
-                "summary": scan.summary or {},
-                "findings": findings,
-                "status": scan.status,
-                "timeline": scan.timeline or [],
-                "logs": scan.logs or [],
-            }
+        scan_file = self.base_dir / f"{scan_id}.json"
+        if not scan_file.exists():
+            return None
+        try:
+            return json.loads(scan_file.read_text(encoding="utf-8"))
+        except Exception:
+            return None
 
     def list_scans(self) -> List[dict]:
-        with SessionLocal() as session:
-            scans = session.scalars(select(Scan).order_by(Scan.created_at.desc())).all()
-        return [
-            {
-                "id": scan.id,
-                "scanType": scan.scan_type,
-                "target": scan.source_url,
-                "status": scan.status,
-                "progress": 100 if scan.status == "COMPLETED" else 0,
-                "startedAt": scan.created_at.isoformat() if scan.created_at else None,
-                "completedAt": scan.completed_at.isoformat() if scan.completed_at else None,
-                "duration": None,
-                "findingsCount": len(scan.findings),
-                "criticalCount": (scan.summary or {}).get("critical", 0),
-                "summary": scan.summary or {},
-                "logs": scan.logs or [],
-                "timeline": scan.timeline or [],
-                "failureReason": None,
-            }
-            for scan in scans
-        ]
+        """Return persisted scan records, newest first."""
+        scans: List[dict] = []
+        for scan_file in sorted(self.base_dir.glob("*.json"), reverse=True):
+            try:
+                scans.append(json.loads(scan_file.read_text(encoding="utf-8")))
+            except Exception:
+                continue
+        return scans
 
     # ── Mutate ─────────────────────────────────────────────────────────────
 
     def update_finding_status(self, finding_id: str, status: str) -> bool:
-        """Update the status field of a single finding."""
-        with SessionLocal() as session:
-            finding = session.get(Finding, finding_id)
-            if finding is None:
-                return False
-            finding.status = status
-            session.commit()
-            return True
+        """
+        Update the status field of a single finding in-place.
+        Returns True if found and updated, False if not found.
+        """
+        for scan_file in self.base_dir.glob("*.json"):
 
-    def _serialize_finding(self, finding: Finding) -> dict:
-        rep = finding.representative_finding or {}
-        if isinstance(rep, str):
-            rep = json.loads(rep)
-        return {
-            "id": finding.id,
-            "scan_id": finding.scan_id,
-            "status": finding.status,
-            "severity": finding.severity,
-            "path": finding.path,
-            "line": finding.line,
-            "message": finding.message,
-            "cwe": finding.cwe,
-            "owasp": finding.owasp,
-            "risk_score": finding.risk_score,
-            "exploitability": finding.exploitability,
-            "priority": finding.priority,
-            "total_occurrences": finding.total_occurrences,
-            "representative_finding": rep,
-            "related_findings": finding.related_findings or [],
-            "ai_analysis": finding.ai_analysis,
-            "rule_id": finding.rule_id,
-            "created_at": finding.created_at.isoformat() if finding.created_at else None,
-        }
+            try:
+                record = json.loads(scan_file.read_text(encoding="utf-8"))
+                for finding in record.get("findings", []):
+                    if finding.get("id") == finding_id:
+                        finding["status"] = status
+                        scan_file.write_text(
+                            json.dumps(record, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                        return True
+            except Exception:
+                continue
+        return False

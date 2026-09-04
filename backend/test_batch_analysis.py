@@ -1,47 +1,11 @@
-import json
-from pathlib import Path
+from backend.ai.batch_analysis_engine import BatchAnalysisEngine
 
-from ai.batch_analysis_engine import (
-    BatchAnalysisEngine
-)
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-results_file = (
-    BASE_DIR
-    / "results"
-    / "WebGoat_github_results.json"
-)
-
-with open(
-    results_file,
-    "r",
-    encoding="utf-8"
-) as file:
-
-    semgrep_results = json.load(file)
-
-findings = semgrep_results.get(
-    "results",
-    []
-)
-
-engine = BatchAnalysisEngine()
-
-results = engine.process_findings(
-    findings=findings,
-    project_path=str(
-        BASE_DIR / "repos" / "WebGoat"
-    ),
-    max_findings=5
-)
-
-print("\n===== BATCH ANALYSIS =====\n")
-
-print(
-    json.dumps(
-        results,
-        indent=4
+def test_batch_analysis_engine(sample_semgrep_results, sample_project_dir):
+    engine = BatchAnalysisEngine()
+    findings = sample_semgrep_results.get("results", [])
+    batch_results = engine.process_findings(
+        findings=findings,
+        project_path=str(sample_project_dir),
+        max_findings=5
     )
-)
+    assert batch_results is not None

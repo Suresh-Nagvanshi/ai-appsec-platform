@@ -1,44 +1,15 @@
-import json
-from pathlib import Path
+from backend.enrichment.context_builder import ContextBuilder
+from backend.risk.risk_scorer import RiskScorer
 
-from enrichment.context_builder import ContextBuilder
-from risk.risk_scorer import RiskScorer
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-results_file = BASE_DIR / "results" / "WebGoat_github_results.json"
-
-with open(
-    results_file,
-    "r",
-    encoding="utf-8"
-) as file:
-
-    semgrep_results = json.load(file)
-
-findings = semgrep_results.get("results", [])
-
-sample_finding = findings[0]
-
-builder = ContextBuilder()
-
-enriched = builder.build(
-    finding=sample_finding,
-    project_path=str(
-        BASE_DIR / "repos" / "WebGoat"
+def test_risk_scorer(sample_semgrep_finding, sample_project_dir):
+    builder = ContextBuilder()
+    enriched = builder.build(
+        finding=sample_semgrep_finding,
+        project_path=str(sample_project_dir)
     )
-)
-
-scorer = RiskScorer()
-
-risk = scorer.calculate(enriched)
-
-print("\n===== RISK ANALYSIS =====\n")
-
-print(
-    json.dumps(
-        risk,
-        indent=4
-    )
-)
+    scorer = RiskScorer()
+    risk = scorer.calculate(enriched)
+    
+    assert risk is not None
+    assert "risk_score" in risk
+    assert "severity" in risk

@@ -138,10 +138,10 @@ class RiskScorer:
             # Dangerous Code Indicators
             # =========================
 
-            full_context = snippet.get(
-                "full_context",
-                ""
-            )
+            full_context = (snippet.get("full_context") or "") if isinstance(snippet, dict) else ""
+            if not isinstance(full_context, str):
+                full_context = str(full_context)
+
 
             dangerous_patterns = [
                 "exec(",

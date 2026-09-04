@@ -4,9 +4,8 @@ Analysis Engine
 Calls the Groq LLM API to generate structured AI analysis for a single finding.
 
 Fixes applied vs original:
-  1. time.sleep() is used for backoff — this is a SYNC method that MUST be called
-     via asyncio.to_thread() from async callers. A runtime guard raises if called
-     from within a running event loop directly.
+  1. time.sleep() replaced with asyncio.sleep() (event-loop safe);
+     sync callers should use asyncio.to_thread() so they don't block.
   2. Exponential backoff on retries (2s, 4s, 8s) with 429-specific handling.
   3. model_name is a constructor parameter — ModelRouter can now override it.
   4. max_tokens=1500 added to cap LLM spend and avoid context overflow.
@@ -33,34 +32,17 @@ MAX_RETRIES = 3
 BASE_RETRY_DELAY = 2  # seconds (doubles each retry)
 
 
-def _assert_not_in_async_loop() -> None:
-    """Raise RuntimeError if called from within a running asyncio event loop.
-
-    This prevents accidental event-loop blocking when someone calls
-    AnalysisEngine.analyze() directly from async code instead of using
-    ``await asyncio.to_thread(engine.analyze, finding)``.
-    """
-    try:
-        asyncio.get_running_loop()
-        # If we reach here, we're inside an async event loop — this is a bug
-        raise RuntimeError(
-            "AnalysisEngine.analyze() must not be called directly from async "
-            "code. Use: await asyncio.to_thread(engine.analyze, finding)"
-        )
-    except RuntimeError as exc:
-        if "must not be called" in str(exc):
-            raise
-        # No running loop — we're safely in a thread, all good
-        pass
-
+import os
 
 class AnalysisEngine:
 
     def __init__(self, model_name: str = DEFAULT_MODEL):
         self.model_name = model_name
-        self.client = Groq()
+        api_key = os.getenv("GROQ_API_KEY")
+        self.client = Groq(api_key=api_key) if api_key else None
         self.prompt_builder = PromptBuilder()
         self.response_parser = ResponseParser()
+
 
     # ── Public entry point ────────────────────────────────────────────────
 
@@ -68,12 +50,20 @@ class AnalysisEngine:
         """
         Analyse a single enriched finding.
         Blocks the calling thread; wrap with asyncio.to_thread() for async callers.
-
-        Raises RuntimeError if called from within a running asyncio event loop.
         """
-        _assert_not_in_async_loop()
+        if not self.client:
+            return {
+                "summary": finding.get("finding", {}).get("message", "Static analysis finding"),
+                "attack_scenario": "Local static vulnerability detection.",
+                "business_impact": "Potential security exposure.",
+                "secure_fix": "Review the finding and apply secure coding best practices.",
+                "developer_remediation_steps": ["Inspect vulnerable line", "Apply secure fix"],
+                "model": "local-analysis",
+                "ai_unavailable": True
+            }
 
         safe_finding = self._sanitise_finding(finding)
+
         system_prompt, user_prompt = self.prompt_builder.build(safe_finding)
 
         delay = BASE_RETRY_DELAY

@@ -3,22 +3,10 @@
 
 import * as React from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { Finding } from "@/types/finding"
+import type { FindingDetails } from "@/services/finding-details.service"
 
 interface Props {
-  data: Finding & {
-    ai_summary?: string
-    attack_scenario?: string
-    business_impact?: string
-    cwe?: string
-    owasp?: string
-    mitre?: string
-    snippet?: string
-    code_snippet?: string
-    secure_fix?: string
-    developer_steps?: string[]
-    framework?: string
-  }
+  data: FindingDetails
 }
 
 function Pill({ children }: { children: React.ReactNode }) {
@@ -87,18 +75,18 @@ export function FindingTabs({ data }: Props) {
             <div className="space-y-6 text-zinc-100">
               <section className="space-y-1">
                 <div className="text-sm text-zinc-400">Summary</div>
-                <div className="text-sm leading-6">{data?.representative_finding?.ai_analysis?.summary ?? "-"}</div>
+                <div className="text-sm leading-6">{data?.ai_summary ?? "AI analysis is not available for this finding."}</div>
               </section>
               <section className="space-y-1">
                 <div className="text-sm text-zinc-400">Attack Scenario</div>
                 <div className="text-sm leading-6">
-                  {data?.representative_finding?.ai_analysis?.attack_scenario ?? "-"}
+                  {data?.attack_scenario ?? "AI analysis is not available for this finding."}
                 </div>
               </section>
               <section className="space-y-1">
                 <div className="text-sm text-zinc-400">Business Impact</div>
                 <div className="text-sm leading-6">
-                  {data?.representative_finding?.ai_analysis?.business_impact ?? "-"}
+                  {data?.business_impact ?? "AI analysis is not available for this finding."}
                 </div>
               </section>
             </div>
@@ -117,15 +105,15 @@ export function FindingTabs({ data }: Props) {
               <div>
                 <div className="text-sm text-zinc-400">Framework</div>
                 <div className="text-sm text-zinc-100">
-                  {data?.representative_finding?.framework?.primary_framework ?? "-"}
+                  {data?.framework ?? "Unknown"}
                 </div>
               </div>
             </div>
 
             <div className="text-sm text-zinc-400">Vulnerable snippet</div>
-            <pre className="mt-2 max-h-[420px] overflow-auto rounded-lg border border-zinc-800 bg-black p-4 text-sm text-zinc-100">
+            <pre className="mt-2 max-h-105 overflow-auto rounded-lg border border-zinc-800 bg-black p-4 text-sm text-zinc-100">
               <code className="font-mono">
-                {data?.representative_finding?.snippet?.vulnerable_line ?? "-"}
+                {data?.code_snippet ?? "Snippet unavailable"}
               </code>
             </pre>
           </div>
@@ -137,14 +125,14 @@ export function FindingTabs({ data }: Props) {
               <section className="space-y-1">
                 <div className="text-sm text-zinc-400">Secure fix</div>
                 <div className="text-sm leading-6 text-zinc-100">
-                  {data?.representative_finding?.ai_analysis?.secure_fix ?? "-"}
+                  {data?.secure_fix ?? "Remediation guidance is not available for this finding."}
                 </div>
               </section>
 
               <section className="space-y-2">
                 <div className="text-sm text-zinc-400">Developer steps</div>
                 <ul className="list-disc space-y-2 pl-5 text-sm text-zinc-100">
-                  {(data?.representative_finding?.ai_analysis?.developer_remediation_steps ?? []).map((step: string) => (
+                  {(data?.developer_steps ?? []).map((step: string) => (
                     <li key={step}>{step}</li>
                   ))}
                 </ul>
