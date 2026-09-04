@@ -11,6 +11,8 @@ export interface ScanRecord {
   id: string;
   scanType: "github" | "zip";
   target: string;
+  branch: string | null;
+  commit: string | null;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
   progress: number;
   startedAt: string;
@@ -22,15 +24,43 @@ export interface ScanRecord {
   logs: Array<{ id: string; time: string; level: string; message: string }>;
   timeline: Array<{ id: string; name: string; status: string }>;
   failureReason: string | null;
+  diff_info?: DiffInfo;
+}
+
+export interface DiffInfo {
+  changed_files: string[];
+  base_commit: string;
+  current_commit: string;
+  added: number;
+  modified: number;
+  deleted: number;
+  total_changed: number;
 }
 
 /** Start a GitHub repository scan. Returns scan_id. */
-export async function startGithubScan(repoUrl: string): Promise<string> {
-  // Backend expects application/json with { repo_url } — axios default, no headers override needed.
-  const res = await api.post<{ scan_id: string; status: string }>(
+export async function startGithubScan(
+  repoUrl: string,
+  branch?: string
+): Promise<string> {
+  // Backend expects application/json with { repo_url, branch? } — axios default.
+  const res = await api.post<{ scan_id: string; status: string; branch?: string }>(
     "/api/scans/github",
-    { repo_url: repoUrl }
+    { repo_url: repoUrl, branch: branch || undefined }
   );
+  return res.data.scan_id;
+}
+
+/** Start an incremental GitHub scan against a base scan (diff only). */
+export async function startIncrementalScan(
+  repoUrl: string,
+  baseScanId: string,
+  branch?: string
+): Promise<string> {
+  const res = await api.post<{ scan_id: string }>("/api/scans/github", {
+    repo_url: repoUrl,
+    branch: branch || undefined,
+    base_scan_id: baseScanId,
+  });
   return res.data.scan_id;
 }
 
@@ -55,5 +85,11 @@ export async function getScan(scanId: string): Promise<ScanRecord> {
 /** List all scans, newest first. */
 export async function listScans(): Promise<ScanRecord[]> {
   const res = await api.get<ScanRecord[]>("/api/scans");
+  return res.data;
+}
+
+/** Fetch diff info for an incremental scan. */
+export async function getScanDiff(scanId: string): Promise<DiffInfo> {
+  const res = await api.get<DiffInfo>(`/api/scans/${scanId}/diff`);
   return res.data;
 }

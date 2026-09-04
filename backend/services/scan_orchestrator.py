@@ -6,6 +6,12 @@ Wires the full scanning pipeline:
   clone_or_extract()
        │
        v
+  [if branch specified] checkout_branch()
+       │
+       v
+  [if base_scan_id] compute_git_diff() ← incremental scan: only changed files
+       │
+       v
   run_semgrep()
        │
        v
@@ -117,9 +123,15 @@ def _update_scan(
 
 # ── Semgrep runner (sync, called via asyncio.to_thread) ───────────────────────
 
-def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
+def _run_semgrep(
+    scan_path: Path,
+    result_file: Path,
+    include_paths: Optional[List[str]] = None,
+) -> dict:
     """
     Execute Semgrep on *scan_path*, write JSON to *result_file*.
+    If *include_paths* is provided (incremental mode), Semgrep is run only
+    on those specific relative file paths, dramatically reducing scan time.
     Returns the parsed Semgrep results dict.
     Raises RuntimeError on failure.
     """
@@ -129,10 +141,16 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
     cmd = [
         "semgrep",
         "--config=auto",
-        str(scan_path),
         "--json",
         "--output", str(result_file),
     ]
+
+    if include_paths:
+        # Scan only the changed files (relative paths from repo root)
+        for rel_path in include_paths:
+            cmd.append(str(scan_path / rel_path))
+    else:
+        cmd.append(str(scan_path))
 
     result = subprocess.run(
         cmd,
@@ -151,6 +169,74 @@ def _run_semgrep(scan_path: Path, result_file: Path) -> dict:
 
     with open(result_file, "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+# ── Branch helpers ─────────────────────────────────────────────────────────────
+
+def _checkout_branch(repo_obj, branch: str) -> None:
+    """
+    Checkout a specific branch in the already-cloned repository.
+    Tries remote tracking branch first (origin/<branch>) to avoid
+    ambiguity when branch name matches a tag.
+    """
+    try:
+        repo_obj.git.checkout(branch)
+    except Exception:
+        # Fallback: create a local tracking branch from the remote
+        repo_obj.git.checkout("-b", branch, f"origin/{branch}")
+
+
+# ── Incremental diff helpers ────────────────────────────────────────────────────
+
+def _compute_git_diff(repo_obj, base_commit: str, current_commit: str) -> dict:
+    """
+    Compute the set of source-code files changed between *base_commit* and
+    *current_commit* using GitPython's diff API.
+
+    Returns a dict with:
+      - changed_files: list of relative paths to changed/added files
+      - base_commit:   hex SHA of the base
+      - current_commit: hex SHA of HEAD
+      - added: count of added files
+      - modified: count of modified files
+      - deleted: count of deleted files
+    """
+    # Extensions recognised as source code for security scanning
+    _SRC_EXTS = {
+        ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".rb",
+        ".php", ".cs", ".cpp", ".c", ".h", ".rs", ".kt", ".swift",
+        ".scala", ".sh", ".yaml", ".yml", ".json", ".tf",
+    }
+
+    base = repo_obj.commit(base_commit)
+    current = repo_obj.commit(current_commit)
+    diffs = base.diff(current)
+
+    changed_files: List[str] = []
+    added = modified = deleted = 0
+
+    for diff in diffs:
+        if diff.change_type == "D":
+            deleted += 1
+            continue  # deleted files have no content to scan
+        path = diff.b_path or diff.a_path
+        ext = Path(path).suffix.lower()
+        if ext in _SRC_EXTS:
+            changed_files.append(path)
+            if diff.change_type == "A":
+                added += 1
+            else:
+                modified += 1
+
+    return {
+        "changed_files": changed_files,
+        "base_commit": base_commit,
+        "current_commit": current_commit,
+        "added": added,
+        "modified": modified,
+        "deleted": deleted,
+        "total_changed": len(changed_files),
+    }
 
 
 # ── AI analysis (sync, called via asyncio.to_thread) ──────────────────────────
@@ -244,10 +330,23 @@ def _local_analysis(finding: dict) -> dict:
 
 # ── GitHub scan ───────────────────────────────────────────────────────────────
 
-async def run_github_scan(scan_id: str, repo_url: str) -> None:
+async def run_github_scan(
+    scan_id: str,
+    repo_url: str,
+    branch: Optional[str] = None,
+    base_scan_id: Optional[str] = None,
+) -> None:
     """
     Full GitHub repository scan pipeline.
     Runs as a FastAPI BackgroundTask so the HTTP response returns immediately.
+
+    Args:
+        scan_id:      UUID of the current scan record.
+        repo_url:     Target GitHub HTTPS URL.
+        branch:       Branch to checkout after clone; None → default branch.
+        base_scan_id: If set, performs an INCREMENTAL scan — only files changed
+                      since the commit recorded in the base scan are re-scanned;
+                      existing findings for unchanged files are preserved.
     """
     # Keep GitPython out of API startup so ZIP scans remain available when Git
     # is not installed on the host. GitPython also needs an explicit path on
@@ -276,7 +375,8 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
         result_file = RESULT_DIR / f"{repo_name}_github_{scan_id}.json"
 
         _update_scan(scan_id, status="RUNNING", progress=5,
-                     log_message=f"Starting GitHub scan for {repo_url}",
+                     log_message=f"Starting GitHub scan for {repo_url}" +
+                                 (f" (branch: {branch})" if branch else ""),
                      timeline_step_id="0", timeline_status="RUNNING")
 
         _update_scan(scan_id, progress=10,
@@ -285,17 +385,60 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
         if repo_path.exists():
             shutil.rmtree(repo_path, ignore_errors=True)
 
-        await asyncio.to_thread(Repo.clone_from, repo_url, repo_path)
+        repo_obj = await asyncio.to_thread(Repo.clone_from, repo_url, repo_path)
+
+        # ── Branch checkout ─────────────────────────────────────────────────────────────────
+        if branch:
+            try:
+                await asyncio.to_thread(_checkout_branch, repo_obj, branch)
+                _update_scan(scan_id, progress=18,
+                             log_message=f"Checked out branch: {branch}")
+            except Exception as exc:
+                raise RuntimeError(f"Branch '{branch}' not found in repository: {exc}")
+        else:
+            active = repo_obj.active_branch.name if not repo_obj.head.is_detached else "HEAD"
+            _update_scan(scan_id, progress=18,
+                         log_message=f"Using default branch: {active}")
+
+        current_commit = repo_obj.head.commit.hexsha
 
         _update_scan(scan_id, progress=20,
                      log_message="Repository cloned successfully",
-                     timeline_step_id="0", timeline_status="COMPLETED")
+                     timeline_step_id="0", timeline_status="COMPLETED",
+                     extra={"commit": current_commit})
+
+        # ── Incremental diff scan ───────────────────────────────────────────────────────────
+        changed_files: Optional[List[str]] = None
+        base_commit: Optional[str] = None
+
+        if base_scan_id:
+            base_scan = _scans.get(base_scan_id)
+            base_commit = (base_scan or {}).get("commit")
+            if base_commit:
+                try:
+                    diff_result = await asyncio.to_thread(
+                        _compute_git_diff, repo_obj, base_commit, current_commit
+                    )
+                    changed_files = diff_result["changed_files"]
+                    _update_scan(scan_id, progress=22,
+                                 log_message=(
+                                     f"Incremental scan: {len(changed_files)} files changed "
+                                     f"since {base_commit[:8]}"
+                                 ),
+                                 extra={"diff_info": diff_result})
+                except Exception as exc:
+                    logger.warning("Diff computation failed; falling back to full scan: %s", exc)
+            else:
+                logger.warning("Base scan %s has no commit hash; running full scan.", base_scan_id)
 
         _update_scan(scan_id, progress=25,
-                     log_message="Running Semgrep static analysis",
+                     log_message="Running Semgrep static analysis" +
+                                 (" (incremental — changed files only)" if changed_files is not None else ""),
                      timeline_step_id="1", timeline_status="RUNNING")
 
-        semgrep_data = await asyncio.to_thread(_run_semgrep, repo_path, result_file)
+        semgrep_data = await asyncio.to_thread(
+            _run_semgrep, repo_path, result_file, include_paths=changed_files
+        )
         raw_findings: List[dict] = semgrep_data.get("results", [])
 
         _update_scan(scan_id, progress=45,
@@ -346,6 +489,8 @@ async def run_github_scan(scan_id: str, repo_url: str) -> None:
                 "scan_id": scan_id,
                 "scan_type": "github",
                 "repository_url": repo_url,
+                "branch": branch,
+                "commit": current_commit,
                 "results": deduplicated,
                 "summary": summary,
             },
