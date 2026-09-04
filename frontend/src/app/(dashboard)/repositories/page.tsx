@@ -14,7 +14,7 @@ import {
     createRepository,
     type Repository,
 } from "@/services/repositories.service";
-import { type ScanRecord, startGithubScan } from "@/services/scans.service";
+import { startGithubScan } from "@/services/scans.service";
 
 export default function RepositoriesPage() {
 
@@ -43,6 +43,7 @@ export default function RepositoriesPage() {
             | "Bitbucket";
 
             url: string;
+            branch?: string;
         }
     ) {
 
@@ -53,6 +54,7 @@ export default function RepositoriesPage() {
                     name: repositoryData.name,
                     url: repositoryData.url,
                     provider: repositoryData.provider,
+                    default_branch: repositoryData.branch,
                 });
 
             queryClient.setQueryData(
@@ -226,7 +228,7 @@ export default function RepositoriesPage() {
 
                                 {...repository}
 
-                                onScan={async (id) => {
+                                onScan={async (id, branch) => {
 
     try {
 
@@ -242,7 +244,8 @@ export default function RepositoriesPage() {
 
         const scanId =
             await startGithubScan(
-                repository.url
+                repository.url,
+                branch,
             );
 
         router.push(
@@ -266,10 +269,10 @@ export default function RepositoriesPage() {
                                     id
                                 ) => {
 
-                                    console.log(
-                                        "Repository:",
-                                        id
-                                    );
+                                    const repo = repositories.find(r => r.id === id);
+                                    if (repo) {
+                                        window.open(repo.url, "_blank", "noopener,noreferrer");
+                                    }
 
                                 }}
 
