@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import {
   LayoutDashboard,
@@ -10,6 +11,7 @@ import {
   FileText,
   Settings,
   Shield,
+  Globe,
 } from "lucide-react";
 
 const navigation = [
@@ -32,6 +34,11 @@ const navigation = [
     name: "Repositories",
     href: "/repositories",
     icon: FolderGit2,
+  },
+  {
+    name: "Website Security",
+    href: "/website-security",
+    icon: Globe,
   },
   {
     name: "Reports",
