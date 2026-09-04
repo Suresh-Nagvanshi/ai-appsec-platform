@@ -331,7 +331,9 @@ async def _crawl_and_analyze(
 
     async with httpx.AsyncClient(
         timeout=_REQUEST_TIMEOUT,
-        follow_redirects=True,
+        # Redirect targets are attacker-controlled. Do not let httpx follow a
+        # public URL into localhost, cloud metadata, or a private network.
+        follow_redirects=False,
         headers=headers,
         limits=httpx.Limits(max_connections=5, max_keepalive_connections=3),
     ) as client:
@@ -344,6 +346,13 @@ async def _crawl_and_analyze(
 
             try:
                 response = await client.get(current_url)
+                if 300 <= response.status_code < 400:
+                    _update(
+                        scan_id,
+                        log_message=f"Skipped redirect from {current_url}",
+                        log_level="WARNING",
+                    )
+                    continue
                 content_type = response.headers.get("content-type", "")
 
                 if "text/html" not in content_type:

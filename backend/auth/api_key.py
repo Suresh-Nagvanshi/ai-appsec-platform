@@ -38,9 +38,12 @@ Response codes
 import logging
 import os
 
+from dotenv import load_dotenv
 from fastapi import Header, HTTPException, status
 
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 _API_KEY: str | None = os.getenv("API_KEY")
 _DISABLED: bool = os.getenv("API_KEY_DISABLED", "").lower() == "true"

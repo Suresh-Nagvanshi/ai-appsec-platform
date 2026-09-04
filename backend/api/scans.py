@@ -47,7 +47,9 @@ _TIMELINE_STEPS = [
     {"id": "4", "name": "Persist Results",     "status": "PENDING"},
 ]
 
-MAX_ZIP_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_ZIP_SIZE = 50 * 1024 * 1024  # 50 MB compressed
+MAX_ZIP_FILES = 10_000
+MAX_EXTRACTED_SIZE = 500 * 1024 * 1024  # 500 MB uncompressed
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ class GithubScanRequest(BaseModel):
     caused by a missing form field when the client sends a JSON body.
     """
     repo_url: str
+    base_scan_id: Optional[str] = None
     branch: Optional[str] = None   # target branch to scan; None → default branch
 
 
@@ -173,9 +176,20 @@ async def scan_github(
     _scans[scan["id"]] = scan
     save_state()
 
-    background_tasks.add_task(run_github_scan, scan["id"], payload.repo_url, branch)
+    background_tasks.add_task(
+        run_github_scan,
+        scan["id"],
+        payload.repo_url,
+        branch,
+        payload.base_scan_id,
+    )
 
-    return {"scan_id": scan["id"], "status": "QUEUED", "branch": branch}
+    return {
+        "scan_id": scan["id"],
+        "status": "QUEUED",
+        "branch": branch,
+        "base_scan_id": payload.base_scan_id,
+    }
 
 
 @router.post("/zip", status_code=202)
@@ -206,6 +220,19 @@ async def scan_zip(
             status_code=400,
             detail="File does not appear to be a valid ZIP archive",
         )
+
+    import io
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            members = archive.infolist()
+            if len(members) > MAX_ZIP_FILES:
+                raise HTTPException(status_code=413, detail="ZIP contains too many files")
+            if sum(member.file_size for member in members) > MAX_EXTRACTED_SIZE:
+                raise HTTPException(status_code=413, detail="ZIP expands beyond the 500 MB limit")
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="File is not a valid ZIP archive")
 
     scan = _new_scan("zip", safe_name)
     _scans[scan["id"]] = scan

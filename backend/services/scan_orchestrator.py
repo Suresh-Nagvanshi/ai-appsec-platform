@@ -553,10 +553,18 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
         extract_path.mkdir(exist_ok=True)
 
         with zipfile.ZipFile(zip_path, "r") as zf:
+            extract_root = extract_path.resolve()
+            total_size = 0
+            member_count = 0
             for member in zf.namelist():
-                member_path = (extract_path / member).resolve()
-                if not str(member_path).startswith(str(extract_path.resolve())):
+                member_count += 1
+                total_size += zf.getinfo(member).file_size
+                try:
+                    (extract_root / member).resolve().relative_to(extract_root)
+                except ValueError:
                     raise ValueError(f"Unsafe ZIP entry detected: {member}")
+                if member_count > 10_000 or total_size > 500 * 1024 * 1024:
+                    raise ValueError("ZIP extraction exceeds the safety limits")
             zf.extractall(extract_path)
 
         _update_scan(scan_id, progress=20,
