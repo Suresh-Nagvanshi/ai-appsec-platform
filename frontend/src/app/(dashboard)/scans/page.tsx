@@ -46,6 +46,8 @@ export default function ScansPage() {
                 id: scanId,
                 scanType: "github",
                 target: scanData.repository,
+                branch: null,
+                commit: null,
                 status: "QUEUED",
                 progress: 0,
                 startedAt: new Date().toISOString(),

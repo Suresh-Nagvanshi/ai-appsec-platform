@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Play, GitBranch, ExternalLink, RefreshCw } from "lucide-react";
+import { Play, GitBranch, ExternalLink } from "lucide-react";
 import { Repository } from "@/services/repositories.service";
 
 interface RepositoryCardProps extends Repository {
@@ -30,7 +30,7 @@ export function RepositoryCard({
     default_branch,
     onScan,
     onView,
-}: RepositoryCardProps & { default_branch?: string }) {
+}: RepositoryCardProps) {
 
     const [scanBranch, setScanBranch] = useState(default_branch ?? "");
     const [showBranchInput, setShowBranchInput] = useState(false);

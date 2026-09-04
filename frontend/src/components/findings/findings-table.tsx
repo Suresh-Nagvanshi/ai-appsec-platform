@@ -163,7 +163,7 @@ export function FindingsTable() {
 
                     <tbody>
 
-                        {findings.map((finding: any) => (
+                        {findings.map((finding) => (
 
                             <tr
                                 key={finding.id}

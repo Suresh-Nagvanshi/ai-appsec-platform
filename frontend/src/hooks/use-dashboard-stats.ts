@@ -46,7 +46,7 @@ export interface DashboardStats {
  *                              but severity itself is nested
  *   }
  */
-function resolveSeverity(f: any): string {
+function resolveSeverity(f: Finding): string {
   return (
     f.representative_finding?.finding?.extra?.severity ||
     f.representative_finding?.risk?.severity ||

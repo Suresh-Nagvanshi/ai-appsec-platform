@@ -13,7 +13,6 @@ import {
   Cell,
   ResponsiveContainer,
   Tooltip,
-  Legend,
 } from "recharts";
 import { useDashboardStats } from "@/hooks/use-dashboard-stats";
 

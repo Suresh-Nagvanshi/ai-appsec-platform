@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
-from backend.db.session import Base
+from backend.db.base import Base
 
 class ScanModel(Base):
     __tablename__ = "scans"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String(64), primary_key=True, index=True)
     project_name = Column(String(255), index=True)
@@ -14,12 +15,16 @@ class ScanModel(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
     summary_json = Column(JSON, nullable=True)
+    source_url = Column(Text, nullable=True)
+    timeline = Column(JSON, nullable=True)
+    logs = Column(JSON, nullable=True)
 
     findings = relationship("FindingModel", back_populates="scan", cascade="all, delete-orphan")
 
 
 class FindingModel(Base):
     __tablename__ = "findings"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String(64), primary_key=True, index=True)
     scan_id = Column(String(64), ForeignKey("scans.id"), index=True)
@@ -39,3 +44,19 @@ class FindingModel(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     scan = relationship("ScanModel", back_populates="findings")
+
+Scan = ScanModel
+Finding = FindingModel
+
+
+@property
+def _scan_summary(self):
+    return self.summary_json
+
+
+@_scan_summary.setter
+def _scan_summary(self, value):
+    self.summary_json = value
+
+
+ScanModel.summary = _scan_summary

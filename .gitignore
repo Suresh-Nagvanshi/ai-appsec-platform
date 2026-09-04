@@ -170,6 +170,7 @@ frontend/prisma/*.db
 
 tmp/
 temp/
+.test-temp/
 
 ##################################################
 # SECURITY / ARCHIVES

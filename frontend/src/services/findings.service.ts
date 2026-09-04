@@ -12,6 +12,16 @@ export interface Finding {
   scan_id: string;
   status: "open" | "in_progress" | "resolved" | "false_positive";
   severity?: string;
+  representative_finding?: {
+    finding?: {
+      check_id?: string;
+      path?: string;
+      severity?: string;
+      extra?: { severity?: string };
+    };
+    risk?: { severity?: string; exploitability?: string };
+  };
+  risk_summary?: { max_risk_score?: number };
   [key: string]: unknown;
 }
 

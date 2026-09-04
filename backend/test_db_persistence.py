@@ -5,6 +5,8 @@ import os
 def _reload_persistence_modules(monkeypatch, db_path):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
     for module_name in [
+        "backend.db",
+        "backend.db.base",
         "backend.db.session",
         "backend.db.models",
         "backend.storage.findings_repository",
@@ -26,7 +28,7 @@ def test_findings_repository_round_trip(monkeypatch, tmp_path):
     db_path = tmp_path / "findings.sqlite"
     repo_module, _ = _reload_persistence_modules(monkeypatch, db_path)
 
-    repo = repo_module.FindingsRepository()
+    repo = repo_module.FindingsRepository(base_dir=tmp_path / "scans")
     scan_id = repo.save_scan(
         project_name="demo",
         scan_results={

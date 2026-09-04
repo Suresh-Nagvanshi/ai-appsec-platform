@@ -29,7 +29,7 @@ def _load_from_db() -> dict:
         scans[row.id] = {
             "id": row.id,
             "scanType": row.scan_type,
-            "target": row.source_url,
+            "target": row.source_url or row.project_name,
             "status": row.status,
             "progress": row.progress,
             "startedAt": row.created_at.isoformat() if row.created_at else None,

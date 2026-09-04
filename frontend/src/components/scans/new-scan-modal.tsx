@@ -11,7 +11,7 @@ interface NewScanModalProps {
         scanType: string;
         targetType: string;
         aiModel: string;
-    }) => Promise<any> | void;
+    }) => Promise<void> | void;
 }
 
 export function NewScanModal({

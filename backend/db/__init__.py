@@ -7,7 +7,7 @@ this package.
 """
 
 from backend.db.base import Base
-from backend.db.models import Finding, Scan
+from backend.db.models import FindingModel as Finding, ScanModel as Scan
 from backend.db.session import SessionLocal, engine
 
 __all__ = ["Base", "Scan", "Finding", "SessionLocal", "engine"]

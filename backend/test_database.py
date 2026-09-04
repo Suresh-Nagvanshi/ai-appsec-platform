@@ -1,8 +1,23 @@
-from backend.db.session import init_db, SessionLocal
-from backend.db.models import ScanModel, FindingModel
-from backend.storage.findings_repository import FindingsRepository
+import importlib
+import sys
 
-def test_database_orm():
+def test_database_orm(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path.as_posix()}/appsec.sqlite")
+    for module_name in [
+        "backend.db",
+        "backend.db.base",
+        "backend.db.session",
+        "backend.db.models",
+    ]:
+        sys.modules.pop(module_name, None)
+
+    db_session = importlib.import_module("backend.db.session")
+    models = importlib.import_module("backend.db.models")
+    init_db = db_session.init_db
+    SessionLocal = db_session.SessionLocal
+    ScanModel = models.ScanModel
+    FindingModel = models.FindingModel
+
     init_db()
     db = SessionLocal()
     

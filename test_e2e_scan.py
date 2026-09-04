@@ -2,10 +2,19 @@ import time
 import requests
 import zipfile
 import io
+import pytest
 
 BASE_URL = "http://localhost:8000"
 
+
+def _require_backend():
+    try:
+        requests.get(f"{BASE_URL}/docs", timeout=1)
+    except requests.RequestException:
+        pytest.skip("E2E tests require the backend running at http://localhost:8000")
+
 def test_github_scan():
+    _require_backend()
     print("\n[1/2] Testing GitHub Scan Endpoint...")
     payload = {
         "repo_url": "https://github.com/octocat/Hello-World"
@@ -32,6 +41,7 @@ def test_github_scan():
             break
 
 def test_zip_scan():
+    _require_backend()
     print("\n[2/2] Testing ZIP Upload Scan Endpoint...")
     # Create in-memory zip containing a python file with a hardcoded secret
     zip_buffer = io.BytesIO()
