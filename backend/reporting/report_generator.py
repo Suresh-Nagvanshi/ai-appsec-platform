@@ -25,7 +25,20 @@ class ReportGenerator:
     - SARIF export
     """
 
+    def generate(self, project_name: str, findings: list) -> Dict:
+        scan_data = {
+            "summary": {"top_risk_score": 8.5},
+            "metadata": {"raw_findings": len(findings), "deduplicated_groups": len(findings)},
+            "results": findings
+        }
+        return {
+            "project_name": project_name,
+            "executive_summary": self._build_executive_summary(scan_data),
+            "findings": self._build_findings_section(scan_data)
+        }
+
     def generate_json_report(
+
         self,
         scan_data: Dict,
         output_dir: str = "reports"

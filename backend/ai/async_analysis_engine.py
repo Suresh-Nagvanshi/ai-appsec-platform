@@ -23,7 +23,12 @@ class AsyncAnalysisEngine:
         self.analysis_engine = AnalysisEngine()
         self.semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_TASKS)
 
+    async def analyze_batch(self, findings: List[Dict]) -> List[Dict]:
+        res = await self.analyze_findings(findings)
+        return res.get("results", [])
+
     async def analyze_findings(self, findings: List[Dict]) -> Dict:
+
         start_time = time.time()
 
         tasks = [self._safe_analyze(finding) for finding in findings]

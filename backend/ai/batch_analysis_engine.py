@@ -59,3 +59,7 @@ class BatchAnalysisEngine:
                 })
 
         return self.deduplicator.deduplicate(enriched_list)
+
+    def process_findings(self, findings: list, project_path: str, max_findings: int = 100) -> list:
+        return self.run(raw_findings=findings[:max_findings], project_path=project_path, project_name="Scan")
+

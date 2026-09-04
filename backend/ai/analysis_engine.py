@@ -32,13 +32,17 @@ MAX_RETRIES = 3
 BASE_RETRY_DELAY = 2  # seconds (doubles each retry)
 
 
+import os
+
 class AnalysisEngine:
 
     def __init__(self, model_name: str = DEFAULT_MODEL):
         self.model_name = model_name
-        self.client = Groq()
+        api_key = os.getenv("GROQ_API_KEY")
+        self.client = Groq(api_key=api_key) if api_key else None
         self.prompt_builder = PromptBuilder()
         self.response_parser = ResponseParser()
+
 
     # ── Public entry point ────────────────────────────────────────────────
 
@@ -47,7 +51,19 @@ class AnalysisEngine:
         Analyse a single enriched finding.
         Blocks the calling thread; wrap with asyncio.to_thread() for async callers.
         """
+        if not self.client:
+            return {
+                "summary": finding.get("finding", {}).get("message", "Static analysis finding"),
+                "attack_scenario": "Local static vulnerability detection.",
+                "business_impact": "Potential security exposure.",
+                "secure_fix": "Review the finding and apply secure coding best practices.",
+                "developer_remediation_steps": ["Inspect vulnerable line", "Apply secure fix"],
+                "model": "local-analysis",
+                "ai_unavailable": True
+            }
+
         safe_finding = self._sanitise_finding(finding)
+
         system_prompt, user_prompt = self.prompt_builder.build(safe_finding)
 
         delay = BASE_RETRY_DELAY

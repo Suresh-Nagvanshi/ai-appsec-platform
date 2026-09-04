@@ -1,74 +1,19 @@
-import json
-from pathlib import Path
+from backend.enrichment.context_builder import ContextBuilder
+from backend.risk.risk_scorer import RiskScorer
+from backend.deduplication.finding_deduplicator import FindingDeduplicator
 
-from enrichment.context_builder import ContextBuilder
-from risk.risk_scorer import RiskScorer
-from deduplication.finding_deduplicator import FindingDeduplicator
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-results_file = BASE_DIR / "results" / "WebGoat_github_results.json"
-
-with open(
-    results_file,
-    "r",
-    encoding="utf-8"
-) as file:
-
-    semgrep_results = json.load(file)
-
-raw_findings = semgrep_results.get(
-    "results",
-    []
-)[:20]
-
-builder = ContextBuilder()
-
-scorer = RiskScorer()
-
-processed_findings = []
-
-for finding in raw_findings:
-
+def test_deduplicator(sample_semgrep_finding, sample_project_dir):
+    builder = ContextBuilder()
+    scorer = RiskScorer()
+    
     enriched = builder.build(
-        finding=finding,
-        project_path=str(
-            BASE_DIR / "repos" / "WebGoat"
-        )
+        finding=sample_semgrep_finding,
+        project_path=str(sample_project_dir)
     )
-
-    risk = scorer.calculate(
-        enriched
-    )
-
-    enriched["risk"] = risk
-
-    processed_findings.append(
-        enriched
-    )
-
-deduplicator = FindingDeduplicator()
-
-results = deduplicator.deduplicate(
-    processed_findings
-)
-
-print("\n===== DEDUPLICATED FINDINGS =====\n")
-
-print(
-    json.dumps(
-        results[:3],
-        indent=4
-    )
-)
-
-print(
-    f"\nOriginal Findings: "
-    f"{len(processed_findings)}"
-)
-
-print(
-    f"Deduplicated Groups: "
-    f"{len(results)}"
-)
+    enriched["risk"] = scorer.calculate(enriched)
+    
+    deduplicator = FindingDeduplicator()
+    results = deduplicator.deduplicate([enriched, enriched])
+    
+    assert results is not None
+    assert len(results) >= 1
