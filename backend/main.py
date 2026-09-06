@@ -35,6 +35,7 @@ from backend.api.ai_security import router as ai_security_router
 from backend.api.security_graph import router as security_graph_router
 from backend.api.regression_tests import router as regression_tests_router
 from backend.api.supply_chain import router as supply_chain_router
+from backend.api.infrastructure_security import router as infrastructure_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
@@ -129,6 +130,12 @@ app.include_router(
     supply_chain_router,
     prefix="/api/supply-chain",
     tags=["Supply Chain Security"],
+    dependencies=_auth,
+)
+app.include_router(
+    infrastructure_router,
+    prefix="/api/infrastructure",
+    tags=["Infrastructure Security"],
     dependencies=_auth,
 )
 
