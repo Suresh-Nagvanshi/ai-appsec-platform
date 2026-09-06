@@ -38,6 +38,7 @@ from backend.api.supply_chain import router as supply_chain_router
 from backend.api.infrastructure_security import router as infrastructure_router
 from backend.api.validation_sandbox import router as validation_router
 from backend.api.ci_security import router as ci_security_router
+from backend.api.runtime_security import router as runtime_security_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
@@ -150,6 +151,12 @@ app.include_router(
     ci_security_router,
     prefix="/api/ci",
     tags=["CI Security Integration"],
+    dependencies=_auth,
+)
+app.include_router(
+    runtime_security_router,
+    prefix="/api/runtime-security",
+    tags=["Runtime Security"],
     dependencies=_auth,
 )
 
