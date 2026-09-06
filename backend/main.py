@@ -33,6 +33,7 @@ from backend.api.website_scans import router as website_scans_router
 from backend.api.api_security import router as api_security_router
 from backend.api.ai_security import router as ai_security_router
 from backend.api.security_graph import router as security_graph_router
+from backend.api.regression_tests import router as regression_tests_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
@@ -115,6 +116,12 @@ app.include_router(
     security_graph_router,
     prefix="/api/security-graph",
     tags=["Security Graph"],
+    dependencies=_auth,
+)
+app.include_router(
+    regression_tests_router,
+    prefix="/api/regression-tests",
+    tags=["Security Regression Tests"],
     dependencies=_auth,
 )
 

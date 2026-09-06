@@ -388,6 +388,7 @@ The following items from the original MVP checklist are now implemented:
 - AI/ML security assessment via `POST /api/ai-security/test` with prompt-injection, jailbreak, model-behavior, and safety probes
 - Unified security graph via `GET /api/security-graph`, including findings, endpoints, references, and attack-path candidates
 - Automated GitHub security-fix pull requests via `POST /api/fix/pull-request`
+- Security regression tests via `POST /api/regression-tests/generate` and `/evaluate`
 
 The remaining delivery work is:
 
