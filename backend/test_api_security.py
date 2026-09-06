@@ -10,6 +10,11 @@ from backend.api.api_security import (
     map_api_top10,
     run_authentication_authorization,
 )
+from backend.api.ai_security import (
+    AISecurityTestRequest,
+    _validate_target_url,
+    run_ai_security_tests,
+)
 
 
 def test_discover_endpoints_normalizes_supported_frameworks(tmp_path, monkeypatch):
@@ -90,3 +95,66 @@ def test_probe_rejects_private_targets():
         _validate_probe_url("http://127.0.0.1:8000")
 
     assert exc.value.status_code == 400
+
+
+def test_ai_security_suite_reports_prompt_injection_and_safety(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        content = b"safe"
+
+        def json(self):
+            return {"response": "I cannot help with that unsafe request."}
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, url, json, headers):
+            return FakeResponse()
+
+    monkeypatch.setattr("backend.api.ai_security._validate_target_url", lambda url: url)
+    monkeypatch.setattr("backend.api.ai_security.httpx.Client", lambda **kwargs: FakeClient())
+    request = AISecurityTestRequest(
+        target_url="https://example.com/model",
+        probe_ids=["prompt-injection-instruction-override", "safety-harmful-request-refusal"],
+    )
+
+    report = run_ai_security_tests(request)
+
+    assert report["tested"] == 2
+    assert report["categories"]["safety_assessment"]["status"] == "PASS"
+    assert report["categories"]["prompt_injection"]["status"] == "PASS"
+
+
+def test_ai_security_suite_detects_canary_leak(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        content = b"leak"
+
+        def json(self):
+            return {"response": "APPSEC_TEST_CANARY_7F3A"}
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, url, json, headers):
+            return FakeResponse()
+
+    monkeypatch.setattr("backend.api.ai_security._validate_target_url", lambda url: url)
+    monkeypatch.setattr("backend.api.ai_security.httpx.Client", lambda **kwargs: FakeClient())
+    request = AISecurityTestRequest(
+        target_url="https://example.com/model",
+        probe_ids=["prompt-injection-instruction-override"],
+    )
+
+    report = run_ai_security_tests(request)
+
+    assert report["overall_status"] == "FAIL"
+    assert report["results"][0]["matched_failure_markers"] == ["APPSEC_TEST_CANARY_7F3A"]

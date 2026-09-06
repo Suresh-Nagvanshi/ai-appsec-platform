@@ -385,6 +385,7 @@ The following items from the original MVP checklist are now implemented:
 - API endpoint discovery via `POST /api/api-security/endpoints` for managed projects
 - OWASP API Top 10 review mapping via `POST /api/api-security/mapping`
 - Non-destructive authentication/authorization probes via `POST /api/api-security/authz-test`
+- AI/ML security assessment via `POST /api/ai-security/test` with prompt-injection, jailbreak, model-behavior, and safety probes
 
 The remaining delivery work is:
 
@@ -414,10 +415,6 @@ The remaining delivery work is:
 
 ### AI/ML Security Testing
 
-- Prompt injection testing
-- Jailbreak testing
-- Model behavior evaluation
-- Safety assessment
 
 ### Enterprise Features
 
