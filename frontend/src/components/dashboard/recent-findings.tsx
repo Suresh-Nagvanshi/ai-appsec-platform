@@ -55,9 +55,11 @@ function EmptyState({ message }: { message: string }) {
 // Helper: extract a display title from a finding regardless of schema depth
 function findingTitle(f: Finding): string {
   const rep = f.representative_finding as Record<string, unknown> | undefined;
+  const raw = rep?.finding as Record<string, unknown> | undefined;
   return (
     (f.title as string | undefined) ??
-    (rep?.rule_id as string | undefined) ??
+    (raw?.message as string | undefined) ??
+    (raw?.rule_id as string | undefined) ??
     (f.rule_id as string | undefined) ??
     "Unknown finding"
   );
@@ -65,9 +67,10 @@ function findingTitle(f: Finding): string {
 
 function findingPath(f: Finding): string {
   const rep = f.representative_finding as Record<string, unknown> | undefined;
+  const raw = rep?.finding as Record<string, unknown> | undefined;
   return (
     (f.path as string | undefined) ??
-    (rep?.path as string | undefined) ??
+    (raw?.path as string | undefined) ??
     "—"
   );
 }
@@ -78,15 +81,15 @@ export function RecentFindings() {
   const { recentFindings, isLoading } = useDashboardStats();
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-6">
+  <div className="rounded-2xl border border-slate-800 bg-[#111820]/90 p-5 shadow-xl shadow-black/10">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Recent Findings</h2>
-          <p className="text-sm text-zinc-400">Latest detected vulnerabilities</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Needs attention</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Recent findings</h2>
+          <p className="text-sm text-slate-500">Latest detected vulnerabilities</p>
         </div>
         <Link
           href="/findings"
-          className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+          className="text-xs text-amber-200 transition-colors hover:text-amber-100"
         >
           View all →
         </Link>
@@ -102,13 +105,13 @@ export function RecentFindings() {
             <Link
               key={f.id}
               href={`/findings/${f.id}`}
-              className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 hover:bg-zinc-800/60 transition-colors"
+              className="flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-900/50 p-3.5 transition-colors hover:border-slate-700 hover:bg-slate-800/70"
             >
               <div>
-                <h3 className="font-medium text-zinc-100 text-sm">
+                <h3 className="text-sm font-medium text-slate-100">
                   {findingTitle(f)}
                 </h3>
-                <p className="mt-1 text-xs text-zinc-400 font-mono">
+                <p className="mt-1 font-mono text-xs text-slate-500">
                   {findingPath(f)}
                 </p>
               </div>
@@ -127,15 +130,15 @@ export function RecentScans() {
   const { recentScans, isLoading } = useDashboardStats();
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-6">
+    <div className="rounded-2xl border border-slate-800 bg-[#111820]/90 p-5 shadow-xl shadow-black/10">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Recent Scans</h2>
-          <p className="text-sm text-zinc-400">Latest scan sessions</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">Activity stream</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Recent scans</h2>
+          <p className="text-sm text-slate-500">Latest scan sessions</p>
         </div>
         <Link
           href="/scans"
-          className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+          className="text-xs text-sky-200 transition-colors hover:text-sky-100"
         >
           View all →
         </Link>
@@ -151,7 +154,7 @@ export function RecentScans() {
             <Link
               key={s.id}
               href={`/scans/${s.id}`}
-              className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 hover:bg-zinc-800/60 transition-colors"
+              className="flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-900/50 p-3.5 transition-colors hover:border-slate-700 hover:bg-slate-800/70"
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-zinc-100">

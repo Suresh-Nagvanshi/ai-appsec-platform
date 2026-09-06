@@ -25,12 +25,12 @@ const SEV_COLORS: Record<string, string> = {
 
 function ChartSkeleton() {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-6 animate-pulse">
+    <div className="animate-pulse rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
       <div className="mb-6 space-y-2">
-        <div className="h-4 w-36 rounded bg-zinc-800" />
-        <div className="h-3 w-48 rounded bg-zinc-800" />
+        <div className="h-4 w-36 rounded bg-slate-800" />
+        <div className="h-3 w-48 rounded bg-slate-800" />
       </div>
-      <div className="h-[320px] w-full rounded-lg bg-zinc-900" />
+      <div className="h-[320px] w-full rounded-xl bg-slate-900" />
     </div>
   );
 }
@@ -57,15 +57,16 @@ export function SecurityPostureChart() {
   const isEmpty = totalFindings === 0;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-6">
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold">Security Posture</h2>
-        <p className="text-sm text-zinc-400">Findings severity distribution</p>
+    <div className="rounded-2xl border border-slate-800 bg-[#111820]/90 p-5 shadow-xl shadow-black/10">
+      <div className="mb-2 flex items-start justify-between">
+        <div><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Risk composition</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Security posture</h2>
+        <p className="mt-1 text-sm text-slate-500">Findings by severity across all scans</p></div>
+        <span className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs text-slate-400">{totalFindings} total</span>
       </div>
 
       {isEmpty ? (
         <div className="flex h-[320px] items-center justify-center">
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-slate-500">
             No findings yet. Run a scan to see your security posture.
           </p>
         </div>
@@ -93,8 +94,8 @@ export function SecurityPostureChart() {
                 <Tooltip
                   formatter={(value) => [value ?? 0, "Findings"]}
                   contentStyle={{
-                    backgroundColor: "#18181b",
-                    border: "1px solid #3f3f46",
+                    backgroundColor: "#111820",
+                    border: "1px solid #334155",
                     borderRadius: "8px",
                     color: "#f4f4f5",
                   }}

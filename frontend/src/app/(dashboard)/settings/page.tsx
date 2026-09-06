@@ -1,8 +1,11 @@
 export default function SettingsPage() {
   return (
-    <div>
-      <h1 className="text-3xl font-bold">Settings</h1>
-      <p className="text-muted-foreground mt-1">Configure platform settings and integrations.</p>
+    <div className="mx-auto w-full max-w-[1100px] space-y-7">
+      <div className="border-b border-slate-800/80 pb-6"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300">Workspace configuration</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-100">Settings</h1><p className="mt-2 text-sm text-slate-500">Control integrations, scan defaults, and security guardrails.</p></div>
+      <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-2xl border border-slate-800 bg-[#111820]/90 p-5 shadow-xl shadow-black/10"><h2 className="text-base font-semibold text-slate-100">Scan defaults</h2><p className="mt-1 text-sm text-slate-500">Defaults used when analysts start a new scan.</p><div className="mt-6 space-y-4"><label className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300"><span><span className="block font-medium text-slate-200">AI-assisted analysis</span><span className="mt-1 block text-xs text-slate-600">Enrich findings with exploitability and remediation context.</span></span><input type="checkbox" defaultChecked className="h-4 w-4 accent-amber-300" /></label><label className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300"><span><span className="block font-medium text-slate-200">Incremental scanning</span><span className="mt-1 block text-xs text-slate-600">Scan changed files when a base scan is available.</span></span><input type="checkbox" defaultChecked className="h-4 w-4 accent-amber-300" /></label></div></section>
+        <section className="rounded-2xl border border-slate-800 bg-[#111820]/90 p-5 shadow-xl shadow-black/10"><h2 className="text-base font-semibold text-slate-100">Connection status</h2><div className="mt-5 space-y-3"><div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/50 p-4"><span className="text-sm text-slate-300">Analysis engine</span><span className="inline-flex items-center gap-2 text-xs text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-400" />Online</span></div><div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/50 p-4"><span className="text-sm text-slate-300">API protection</span><span className="inline-flex items-center gap-2 text-xs text-amber-200"><span className="h-2 w-2 rounded-full bg-amber-300" />Configured server-side</span></div></div></section>
+      </div>
     </div>
   );
 }

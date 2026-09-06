@@ -18,14 +18,14 @@ import { useDashboardStats } from "@/hooks/use-dashboard-stats";
 // Skeleton for a single card while loading
 function CardSkeleton() {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-6 animate-pulse">
+    <div className="animate-pulse rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
       <div className="flex items-start justify-between">
         <div className="space-y-3">
-          <div className="h-3 w-28 rounded bg-zinc-800" />
-          <div className="h-8 w-16 rounded bg-zinc-800" />
+          <div className="h-3 w-28 rounded bg-slate-800" />
+          <div className="h-8 w-16 rounded bg-slate-800" />
         </div>
-        <div className="rounded-lg bg-zinc-900 p-2">
-          <div className="h-5 w-5 rounded bg-zinc-800" />
+        <div className="rounded-xl bg-slate-800 p-2">
+          <div className="h-5 w-5 rounded bg-slate-700" />
         </div>
       </div>
     </div>
@@ -80,23 +80,23 @@ export function StatsCards() {
         return (
           <div
             key={stat.title}
-            className="rounded-xl border border-zinc-800 bg-zinc-950 p-6"
+            className={`relative overflow-hidden rounded-2xl border border-slate-800 bg-[#111820]/90 p-5 shadow-xl shadow-black/10 ${stat.highlight ? "border-red-500/30" : ""}`}
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-zinc-400">{stat.title}</p>
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{stat.title}</p>
                 <h2
                   className={`mt-3 text-3xl font-bold tabular-nums ${
-                    stat.highlight ? "text-red-400" : ""
+                    stat.highlight ? "text-red-300" : "text-slate-100"
                   }`}
                 >
                   {stat.value}
                 </h2>
               </div>
-              <div className="rounded-lg bg-zinc-900 p-2">
+              <div className={`rounded-xl p-2.5 ${stat.highlight ? "bg-red-400/10" : "bg-slate-800/80"}`}>
                 <Icon
                   className={`h-5 w-5 ${
-                    stat.highlight ? "text-red-400" : "text-zinc-300"
+                    stat.highlight ? "text-red-300" : "text-amber-200"
                   }`}
                 />
               </div>
