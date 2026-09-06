@@ -8,6 +8,8 @@ from backend.api.api_security import (
     _validate_probe_url,
     discover_endpoints,
     map_api_top10,
+    analyze_api_contract,
+    compare_api_contracts,
     run_authentication_authorization,
 )
 from backend.api.ai_security import (
@@ -158,3 +160,24 @@ def test_ai_security_suite_detects_canary_leak(monkeypatch):
 
     assert report["overall_status"] == "FAIL"
     assert report["results"][0]["matched_failure_markers"] == ["APPSEC_TEST_CANARY_7F3A"]
+
+
+def test_openapi_contract_analysis_detects_auth_and_path_parameter_gaps():
+    analysis = analyze_api_contract({
+        "openapi": "3.0.0",
+        "paths": {"/users/{user_id}": {"get": {}}},
+    })
+
+    messages = {finding["message"] for finding in analysis["findings"]}
+    assert "Operation has no declared authentication requirement." in messages
+    assert "Path parameter 'user_id' is not declared." in messages
+
+
+def test_openapi_contract_comparison_reports_route_drift():
+    drift = compare_api_contracts(
+        {"paths": {"/old": {"get": {}}, "/stable": {"get": {}}}},
+        {"paths": {"/new": {"post": {}}, "/stable": {"get": {}}}},
+    )
+
+    assert drift["added"] == ["POST /new"]
+    assert drift["breaking_changes"] == ["GET /old"]

@@ -50,6 +50,11 @@ class AuthzTestRequest(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
 
 
+class APIContractRequest(BaseModel):
+    spec: dict
+    baseline: dict | None = None
+
+
 def _allowed_project_path(project_path: str) -> Path:
     candidate = Path(project_path).expanduser().resolve()
     if not candidate.is_dir():
@@ -126,6 +131,69 @@ def map_api_top10(endpoints: List[dict]) -> List[dict]:
             ],
         })
     return mapped
+
+
+def analyze_api_contract(spec: dict) -> dict:
+    """Analyze an OpenAPI/Swagger document without making network requests."""
+    version = str(spec.get("openapi") or spec.get("swagger") or "")
+    findings = []
+    paths = spec.get("paths") or {}
+    global_security = spec.get("security")
+    operations = []
+    for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        for method, operation in path_item.items():
+            if method.lower() not in {"get", "post", "put", "patch", "delete", "options", "head"} or not isinstance(operation, dict):
+                continue
+            operations.append((method.upper(), path, operation))
+            location = f"{method.upper()} {path}"
+            if operation.get("deprecated"):
+                findings.append({"category": "lifecycle", "severity": "LOW", "location": location, "message": "Deprecated operation remains in the contract."})
+            if not operation.get("operationId"):
+                findings.append({"category": "contract_quality", "severity": "LOW", "location": location, "message": "Operation is missing operationId."})
+            if operation.get("security") is None and global_security is None and method.lower() not in {"options", "head"}:
+                findings.append({"category": "authentication", "severity": "HIGH", "location": location, "message": "Operation has no declared authentication requirement."})
+            if method.upper() in {"POST", "PUT", "PATCH"} and "requestBody" not in operation:
+                findings.append({"category": "contract_quality", "severity": "MEDIUM", "location": location, "message": "State-changing operation has no requestBody schema."})
+            parameters = operation.get("parameters", [])
+            declared_path_params = {parameter.get("name") for parameter in parameters if parameter.get("in") == "path"}
+            required_path_params = {part[1:-1] for part in path.split("/") if part.startswith("{") and part.endswith("}")}
+            for missing in sorted(required_path_params - declared_path_params):
+                findings.append({"category": "contract_quality", "severity": "HIGH", "location": location, "message": f"Path parameter '{missing}' is not declared."})
+
+    return {
+        "format": "OpenAPI" if spec.get("openapi") else "Swagger" if spec.get("swagger") else "unknown",
+        "version": version,
+        "endpoint_count": len(operations),
+        "findings": findings,
+        "summary": {
+            "high": sum(item["severity"] == "HIGH" for item in findings),
+            "medium": sum(item["severity"] == "MEDIUM" for item in findings),
+            "low": sum(item["severity"] == "LOW" for item in findings),
+        },
+    }
+
+
+def compare_api_contracts(baseline: dict, current: dict) -> dict:
+    """Report route-level API contract drift between two OpenAPI documents."""
+    def routes(spec: dict) -> set[str]:
+        return {
+            f"{method.upper()} {path}"
+            for path, path_item in (spec.get("paths") or {}).items()
+            if isinstance(path_item, dict)
+            for method in path_item
+            if method.lower() in {"get", "post", "put", "patch", "delete", "options", "head"}
+        }
+
+    before = routes(baseline)
+    after = routes(current)
+    return {
+        "added": sorted(after - before),
+        "removed": sorted(before - after),
+        "unchanged": sorted(before & after),
+        "breaking_changes": sorted(before - after),
+    }
 
 
 def _validate_probe_url(base_url: str) -> str:
@@ -233,3 +301,12 @@ def authz_test(payload: AuthzTestRequest):
         "results": results,
         "disclaimer": "This performs non-destructive GET requests only. A successful response is a review signal, not proof of missing authorization; meaningful authorization testing requires separate identities and concrete object IDs.",
     }
+
+
+@router.post("/contract")
+def api_contract_analysis(payload: APIContractRequest):
+    """Analyze an OpenAPI/Swagger contract and optionally compare a baseline."""
+    analysis = analyze_api_contract(payload.spec)
+    if payload.baseline is not None:
+        analysis["drift"] = compare_api_contracts(payload.baseline, payload.spec)
+    return analysis

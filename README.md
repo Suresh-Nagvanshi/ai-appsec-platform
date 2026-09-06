@@ -389,6 +389,7 @@ The following items from the original MVP checklist are now implemented:
 - Unified security graph via `GET /api/security-graph`, including findings, endpoints, references, and attack-path candidates
 - Automated GitHub security-fix pull requests via `POST /api/fix/pull-request`
 - Security regression tests via `POST /api/regression-tests/generate` and `/evaluate`
+- OpenAPI/Swagger contract analysis and route-drift detection via `POST /api/api-security/contract`
 
 The remaining delivery work is:
 
