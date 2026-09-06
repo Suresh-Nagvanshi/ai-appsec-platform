@@ -30,6 +30,7 @@ from backend.api.scans import router as scans_router
 from backend.api.repositories import router as repositories_router
 from backend.api.fix import router as fix_router
 from backend.api.website_scans import router as website_scans_router
+from backend.api.api_security import router as api_security_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
@@ -94,6 +95,12 @@ app.include_router(
     website_scans_router,
     prefix="/api/website-scans",
     tags=["Website Security"],
+    dependencies=_auth,
+)
+app.include_router(
+    api_security_router,
+    prefix="/api/api-security",
+    tags=["API Security"],
     dependencies=_auth,
 )
 

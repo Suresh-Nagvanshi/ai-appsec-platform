@@ -30,6 +30,7 @@ _BASE_DIR.mkdir(parents=True, exist_ok=True)
 class FindingsRepository:
 
     def __init__(self, base_dir: Optional[Path] = None):
+        self._database_authoritative = base_dir is None
         self.base_dir = Path(base_dir) if base_dir else _BASE_DIR
         self.base_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -124,9 +125,29 @@ class FindingsRepository:
 
     def get_all_findings(self) -> List[dict]:
         """
-        Return a flat list of all findings from all scan files,
-        newest scans first.
+        Return a flat list of all findings, newest scans first.
+
+        Production repositories use the ORM so PostgreSQL is authoritative.
+        Explicit base directories remain JSON-backed for isolated local tools
+        and tests.
         """
+        if self._database_authoritative:
+            try:
+                db = SessionLocal()
+                rows = (
+                    db.query(FindingModel)
+                    .order_by(FindingModel.created_at.desc())
+                    .all()
+                )
+                findings = [
+                    row.raw_payload_json or self._finding_from_model(row)
+                    for row in rows
+                ]
+                db.close()
+                return findings
+            except Exception as exc:
+                logger.warning("Failed to read findings from database: %s", exc)
+
         findings: List[dict] = []
         for scan_file in sorted(self.base_dir.glob("*.json"), reverse=True):
             try:
@@ -137,7 +158,18 @@ class FindingsRepository:
         return findings
 
     def get_finding_by_id(self, finding_id: str) -> Optional[dict]:
-        """Search all scan files for a finding by its id field."""
+        """Return a finding from the database, falling back to JSON."""
+        if self._database_authoritative:
+            try:
+                db = SessionLocal()
+                row = db.query(FindingModel).filter(FindingModel.id == finding_id).first()
+                finding = row.raw_payload_json or self._finding_from_model(row) if row else None
+                db.close()
+                if finding is not None:
+                    return finding
+            except Exception as exc:
+                logger.warning("Failed to read finding from database: %s", exc)
+
         for scan_file in self.base_dir.glob("*.json"):
             try:
                 record = json.loads(scan_file.read_text(encoding="utf-8"))
@@ -175,6 +207,22 @@ class FindingsRepository:
         Update the status field of a single finding in-place.
         Returns True if found and updated, False if not found.
         """
+        if self._database_authoritative:
+            try:
+                db = SessionLocal()
+                row = db.query(FindingModel).filter(FindingModel.id == finding_id).first()
+                if row:
+                    row.status = status
+                    payload = dict(row.raw_payload_json or {})
+                    payload["status"] = status
+                    row.raw_payload_json = payload
+                    db.commit()
+                    db.close()
+                    return True
+                db.close()
+            except Exception as exc:
+                logger.warning("Failed to update finding in database: %s", exc)
+
         for scan_file in self.base_dir.glob("*.json"):
 
             try:
@@ -190,3 +238,24 @@ class FindingsRepository:
             except Exception:
                 continue
         return False
+
+    @staticmethod
+    def _finding_from_model(row: FindingModel) -> dict:
+        """Build the public finding shape when a legacy row has no payload."""
+        return {
+            "id": row.id,
+            "scan_id": row.scan_id,
+            "rule_id": row.rule_id,
+            "severity": row.severity,
+            "path": row.file_path,
+            "line": row.line_number,
+            "message": row.message,
+            "cwe": row.cwe,
+            "owasp": row.owasp,
+            "status": row.status or "open",
+            "risk": {
+                "risk_score": row.risk_score,
+                "exploitability": row.exploitability,
+                "priority": row.priority,
+            },
+        }

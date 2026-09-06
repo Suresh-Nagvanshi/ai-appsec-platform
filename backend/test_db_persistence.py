@@ -62,6 +62,29 @@ def test_findings_repository_round_trip(monkeypatch, tmp_path):
     assert scan["project_name"] == "demo"
 
 
+def test_default_findings_repository_reads_database_without_json(monkeypatch, tmp_path):
+    db_path = tmp_path / "authoritative.sqlite"
+    repo_module, _ = _reload_persistence_modules(monkeypatch, db_path)
+    repo_module._BASE_DIR = tmp_path / "scans"
+
+    repo = repo_module.FindingsRepository()
+    repo.save_scan(
+        project_name="database-first",
+        scan_results={
+            "scan_id": "scan-db-first",
+            "results": [{"id": "finding-db-first", "severity": "HIGH", "message": "Stored in SQL"}],
+        },
+    )
+    (tmp_path / "scans" / "scan-db-first.json").unlink()
+
+    finding = repo.get_finding_by_id("finding-db-first")
+    assert finding is not None
+    assert finding["message"] == "Stored in SQL"
+
+    assert repo.update_finding_status("finding-db-first", "resolved") is True
+    assert repo.get_finding_by_id("finding-db-first")["status"] == "resolved"
+
+
 def test_scan_state_persists_across_reloads(monkeypatch, tmp_path):
     db_path = tmp_path / "scan_state.sqlite"
     _, scan_state_module = _reload_persistence_modules(monkeypatch, db_path)

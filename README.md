@@ -241,7 +241,7 @@ http://localhost:3000
 |---|---|
 | No authentication | All endpoints are public — do not expose publicly |
 | In-memory scan state | Persisted to `data/scan_state.json`; lost only on manual file delete |
-| JSON storage | Will be replaced with PostgreSQL |
+| Hybrid persistence during migration | Scan state and findings use SQLAlchemy; JSON files remain as a compatibility/fallback store |
 | No file size limits | Large repositories / ZIPs will take significant time |
 | AI analysis is synchronous per-finding | Large repos with many findings will be slow |
 
@@ -371,15 +371,25 @@ import from the neutral shared module — no cycle.
 
 ---
 
-## In Progress
+## Current Implementation Status
 
-- Replace mock findings in `GET /findings` with real persisted data
-- Findings detail page connected to real API
-- PostgreSQL integration
-- Docker setup
-- Authentication and API key middleware
-- RBAC
-- Multi-tenant isolation
+The following items from the original MVP checklist are now implemented:
+
+- `GET /findings` and `GET /findings/{id}` use persisted findings rather than mock data
+- Findings detail page consumes the real findings API
+- SQLAlchemy persistence supports SQLite locally and PostgreSQL through `DATABASE_URL`
+- API-key middleware protects application routers; `/health` remains public
+- Docker Compose defines PostgreSQL, backend, and frontend services
+- Branch selection and incremental/diff scanning are available for GitHub scans
+- Website URL scanning includes crawling, security-header checks, and client-side analysis
+- API endpoint discovery via `POST /api/api-security/endpoints` for managed projects
+
+The remaining delivery work is:
+
+- Complete production Dockerfiles and container startup verification
+- Add RBAC and multi-tenant data isolation
+- Harden upload and scan resource limits
+- Replace remaining JSON compatibility paths after database migration is validated
 
 ---
 
@@ -399,7 +409,6 @@ import from the neutral shared module — no cycle.
 
 ### API Security
 
-- Endpoint discovery
 - OWASP API Top 10 mapping
 - Authentication and authorization testing
 
