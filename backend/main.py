@@ -32,6 +32,7 @@ from backend.api.fix import router as fix_router
 from backend.api.website_scans import router as website_scans_router
 from backend.api.api_security import router as api_security_router
 from backend.api.ai_security import router as ai_security_router
+from backend.api.security_graph import router as security_graph_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
@@ -108,6 +109,12 @@ app.include_router(
     ai_security_router,
     prefix="/api/ai-security",
     tags=["AI/ML Security"],
+    dependencies=_auth,
+)
+app.include_router(
+    security_graph_router,
+    prefix="/api/security-graph",
+    tags=["Security Graph"],
     dependencies=_auth,
 )
 

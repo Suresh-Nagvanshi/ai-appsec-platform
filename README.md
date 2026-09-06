@@ -386,6 +386,7 @@ The following items from the original MVP checklist are now implemented:
 - OWASP API Top 10 review mapping via `POST /api/api-security/mapping`
 - Non-destructive authentication/authorization probes via `POST /api/api-security/authz-test`
 - AI/ML security assessment via `POST /api/ai-security/test` with prompt-injection, jailbreak, model-behavior, and safety probes
+- Unified security graph via `GET /api/security-graph`, including findings, endpoints, references, and attack-path candidates
 
 The remaining delivery work is:
 
