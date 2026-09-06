@@ -393,6 +393,7 @@ The following items from the original MVP checklist are now implemented:
 - Supply-chain analysis via `POST /api/supply-chain/analyze` with SBOM-compatible inventory and secret detection
 - IaC/container security analysis via `POST /api/infrastructure/analyze` for Docker, Terraform, Kubernetes, and CI workflows
 - Controlled exploit validation via `POST /api/validation-sandbox/run` using Docker isolation
+- CI integration via `GET /api/ci/sarif/{scan_id}` and `POST /api/ci/gate`
 
 The remaining delivery work is:
 

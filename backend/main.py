@@ -37,6 +37,7 @@ from backend.api.regression_tests import router as regression_tests_router
 from backend.api.supply_chain import router as supply_chain_router
 from backend.api.infrastructure_security import router as infrastructure_router
 from backend.api.validation_sandbox import router as validation_router
+from backend.api.ci_security import router as ci_security_router
 
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
@@ -143,6 +144,12 @@ app.include_router(
     validation_router,
     prefix="/api/validation-sandbox",
     tags=["Exploit Validation"],
+    dependencies=_auth,
+)
+app.include_router(
+    ci_security_router,
+    prefix="/api/ci",
+    tags=["CI Security Integration"],
     dependencies=_auth,
 )
 
