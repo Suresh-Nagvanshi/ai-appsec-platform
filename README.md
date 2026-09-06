@@ -383,6 +383,7 @@ The following items from the original MVP checklist are now implemented:
 - Branch selection and incremental/diff scanning are available for GitHub scans
 - Website URL scanning includes crawling, security-header checks, and client-side analysis
 - API endpoint discovery via `POST /api/api-security/endpoints` for managed projects
+- OWASP API Top 10 review mapping via `POST /api/api-security/mapping`
 
 The remaining delivery work is:
 
@@ -409,7 +410,6 @@ The remaining delivery work is:
 
 ### API Security
 
-- OWASP API Top 10 mapping
 - Authentication and authorization testing
 
 ### AI/ML Security Testing
