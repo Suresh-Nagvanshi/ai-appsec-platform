@@ -8,7 +8,10 @@ roots so callers cannot use this endpoint as an arbitrary filesystem reader.
 
 from pathlib import Path
 from typing import List
+from ipaddress import ip_address
+from urllib.parse import urljoin, urlparse
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -39,6 +42,12 @@ OWASP_API_TOP10 = {
 
 class EndpointDiscoveryRequest(BaseModel):
     project_path: str = Field(min_length=1)
+
+
+class AuthzTestRequest(BaseModel):
+    base_url: str = Field(min_length=1)
+    endpoints: List[dict] = Field(min_length=1, max_length=100)
+    headers: dict[str, str] = Field(default_factory=dict)
 
 
 def _allowed_project_path(project_path: str) -> Path:
@@ -119,6 +128,64 @@ def map_api_top10(endpoints: List[dict]) -> List[dict]:
     return mapped
 
 
+def _validate_probe_url(base_url: str) -> str:
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="base_url must be an HTTP(S) URL")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="base_url must not contain credentials")
+    hostname = parsed.hostname.lower()
+    if hostname in {"localhost", "localhost.localdomain"}:
+        raise HTTPException(status_code=400, detail="Private and local probe targets are not allowed")
+    try:
+        address = ip_address(hostname)
+        if address.is_private or address.is_loopback or address.is_link_local or address.is_reserved:
+            raise HTTPException(status_code=400, detail="Private and local probe targets are not allowed")
+    except ValueError:
+        if hostname.endswith((".local", ".internal")):
+            raise HTTPException(status_code=400, detail="Private and local probe targets are not allowed")
+    return base_url.rstrip("/") + "/"
+
+
+def _probe_endpoint(client: httpx.Client, base_url: str, endpoint: dict, headers: dict[str, str]) -> dict:
+    path = str(endpoint.get("path", ""))
+    if any(token in path for token in ("{", ":", "<")):
+        return {**endpoint, "status": "SKIPPED", "reason": "Templated path requires concrete object identifiers"}
+
+    url = urljoin(base_url, path.lstrip("/"))
+    try:
+        response = client.get(url, headers=headers)
+    except httpx.HTTPError as exc:
+        return {**endpoint, "status": "ERROR", "reason": str(exc)}
+
+    status = response.status_code
+    if status in {401, 403}:
+        classification = "AUTH_REQUIRED"
+    elif status < 400:
+        classification = "PUBLIC_OR_UNPROTECTED"
+    else:
+        classification = "INCONCLUSIVE"
+
+    return {
+        **endpoint,
+        "url": url,
+        "http_status": status,
+        "classification": classification,
+        "response_size": len(response.content),
+    }
+
+
+def run_authentication_authorization(
+    base_url: str,
+    endpoints: List[dict],
+    headers: dict[str, str] | None = None,
+) -> List[dict]:
+    """Passively probe GET endpoints and classify observable access controls."""
+    target = _validate_probe_url(base_url)
+    with httpx.Client(timeout=10.0, follow_redirects=False) as client:
+        return [_probe_endpoint(client, target, endpoint, headers or {}) for endpoint in endpoints]
+
+
 @router.post("/endpoints")
 def endpoint_inventory(payload: EndpointDiscoveryRequest):
     """Discover HTTP endpoints in a managed local repository or extraction."""
@@ -149,4 +216,20 @@ def api_top10_mapping(payload: EndpointDiscoveryRequest):
         "category_counts": category_counts,
         "endpoints": endpoints,
         "disclaimer": "Mappings identify review areas from static route characteristics; they are not proof of exploitable vulnerabilities.",
+    }
+
+
+@router.post("/authz-test")
+def authz_test(payload: AuthzTestRequest):
+    """Run non-destructive GET probes for authentication/authorization signals."""
+    results = run_authentication_authorization(
+        payload.base_url,
+        payload.endpoints,
+        payload.headers,
+    )
+    return {
+        "base_url": payload.base_url.rstrip("/"),
+        "tested": len(results),
+        "results": results,
+        "disclaimer": "This performs non-destructive GET requests only. A successful response is a review signal, not proof of missing authorization; meaningful authorization testing requires separate identities and concrete object IDs.",
     }
