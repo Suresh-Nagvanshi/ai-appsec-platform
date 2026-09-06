@@ -16,6 +16,9 @@ from backend.api.ai_security import (
     AISecurityTestRequest,
     _validate_target_url,
     run_ai_security_tests,
+    ModelEvaluationCase,
+    ModelEvaluationRequest,
+    run_model_evaluation,
 )
 
 
@@ -181,3 +184,32 @@ def test_openapi_contract_comparison_reports_route_drift():
 
     assert drift["added"] == ["POST /new"]
     assert drift["breaking_changes"] == ["GET /old"]
+
+
+def test_model_evaluation_reports_accuracy_and_latency(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"response": "expected answer"}
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, url, json, headers):
+            return FakeResponse()
+
+    monkeypatch.setattr("backend.api.ai_security._validate_target_url", lambda url: url)
+    monkeypatch.setattr("backend.api.ai_security.httpx.Client", lambda **kwargs: FakeClient())
+    report = run_model_evaluation(ModelEvaluationRequest(
+        target_url="https://example.com/model",
+        cases=[ModelEvaluationCase(id="case-1", prompt="hello", expected_markers=["expected"])],
+    ))
+
+    assert report["status"] == "PASS"
+    assert report["accuracy"] == 1.0
+    assert report["average_latency_ms"] >= 0

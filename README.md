@@ -394,6 +394,7 @@ The following items from the original MVP checklist are now implemented:
 - IaC/container security analysis via `POST /api/infrastructure/analyze` for Docker, Terraform, Kubernetes, and CI workflows
 - Controlled exploit validation via `POST /api/validation-sandbox/run` using Docker isolation
 - CI integration via `GET /api/ci/sarif/{scan_id}` and `POST /api/ci/gate`
+- AI model golden-set evaluation via `POST /api/ai-security/evaluate` with accuracy and latency metrics
 
 The remaining delivery work is:
 

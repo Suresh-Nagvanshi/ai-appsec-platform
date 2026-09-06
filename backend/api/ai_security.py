@@ -8,6 +8,7 @@ claims that a response alone proves a model is safe or unsafe.
 
 import copy
 import socket
+import time
 from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlparse
@@ -83,6 +84,21 @@ class AISecurityTestRequest(BaseModel):
     response_path: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
     probe_ids: list[str] | None = Field(default=None, max_length=_MAX_PROBES)
+
+
+class ModelEvaluationCase(BaseModel):
+    id: str
+    prompt: str
+    expected_markers: list[str] = Field(default_factory=list)
+    forbidden_markers: list[str] = Field(default_factory=list)
+
+
+class ModelEvaluationRequest(BaseModel):
+    target_url: str = Field(min_length=1)
+    cases: list[ModelEvaluationCase] = Field(min_length=1, max_length=50)
+    request_template: dict[str, Any] = Field(default_factory=lambda: {"prompt": "{{prompt}}"})
+    response_path: str | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
 
 
 def _validate_target_url(target_url: str) -> str:
@@ -212,7 +228,39 @@ def run_ai_security_tests(request: AISecurityTestRequest) -> dict:
     }
 
 
+def run_model_evaluation(request: ModelEvaluationRequest) -> dict:
+    """Run a caller-supplied golden set and measure quality and latency."""
+    _validate_target_url(request.target_url)
+    results = []
+    with httpx.Client(timeout=15.0, follow_redirects=False) as client:
+        for case in request.cases:
+            started = time.perf_counter()
+            body = _render_template(copy.deepcopy(request.request_template), case.prompt)
+            try:
+                response = client.post(request.target_url, json=body, headers=request.headers)
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = response.text
+                output = _extract_response(payload, request.response_path)
+                lowered = output.lower()
+                missing = [marker for marker in case.expected_markers if marker.lower() not in lowered]
+                forbidden = [marker for marker in case.forbidden_markers if marker.lower() in lowered]
+                status = "PASS" if response.status_code < 400 and not missing and not forbidden else "FAIL"
+                results.append({"id": case.id, "status": status, "http_status": response.status_code, "latency_ms": round((time.perf_counter() - started) * 1000, 2), "missing_expected": missing, "matched_forbidden": forbidden, "response_preview": output[:500]})
+            except httpx.HTTPError as exc:
+                results.append({"id": case.id, "status": "ERROR", "latency_ms": round((time.perf_counter() - started) * 1000, 2), "error": str(exc)})
+    passed = sum(result["status"] == "PASS" for result in results)
+    return {"target_url": request.target_url, "status": "PASS" if passed == len(results) else "FAIL", "tested": len(results), "passed": passed, "accuracy": round(passed / len(results), 4) if results else 0, "average_latency_ms": round(sum(result.get("latency_ms", 0) for result in results) / len(results), 2) if results else 0, "results": results}
+
+
 @router.post("/test")
 def ai_security_test(request: AISecurityTestRequest):
     """Run prompt-injection, jailbreak, behavior, and safety probes."""
     return run_ai_security_tests(request)
+
+
+@router.post("/evaluate")
+def ai_model_evaluation(request: ModelEvaluationRequest):
+    """Evaluate a model against a caller-supplied golden test set."""
+    return run_model_evaluation(request)
