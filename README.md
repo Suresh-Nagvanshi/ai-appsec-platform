@@ -1,441 +1,460 @@
 # AI AppSec Platform
 
-AI-powered Application Security platform that combines traditional static analysis
-with contextual AI reasoning for vulnerability prioritization, exploitability
-analysis, and remediation guidance.
+AI AppSec Platform is an application-security workspace that combines static analysis, contextual AI reasoning, attack-surface discovery, runtime evidence, and developer remediation workflows.
 
----
+The platform is designed to help security and engineering teams move from **finding** to **evidence**, **prioritization**, and **verified remediation**.
 
-## Vision
+## Contents
 
-Traditional security tools generate large volumes of raw findings:
+- [Capabilities](#capabilities)
+- [Architecture](#architecture)
+- [Technology stack](#technology-stack)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [API surface](#api-surface)
+- [Frontend](#frontend)
+- [Project structure](#project-structure)
+- [Security boundaries](#security-boundaries)
+- [Testing](#testing)
+- [Known limitations](#known-limitations)
+- [Roadmap](#roadmap)
+- [Troubleshooting](#troubleshooting)
 
-- False positives
-- Duplicate issues
-- Low-priority alerts
-- Difficult remediation paths
+## Capabilities
 
-This platform transforms raw scanner output into:
+### Repository security
 
-- Contextual, enriched findings
-- Exploitability-aware AI analysis
-- AI-assisted remediation guidance
-- Actionable security intelligence
+- GitHub repository scanning with branch selection
+- ZIP upload scanning with file-count, archive-size, and extracted-size limits
+- Semgrep static analysis
+- Framework, endpoint, snippet, and source-context enrichment
+- Incremental and diff-only GitHub scans
+- Risk scoring, AI analysis, deduplication, and finding triage
+- Scan progress, logs, timelines, and persisted scan state
 
-The long-term objective is to function as an AI-assisted security engineer,
-not a simple scanner.
+### Website security
 
----
+- Public website URL scanning
+- Bounded breadth-first crawling
+- Security-header analysis for CSP, HSTS, clickjacking, MIME sniffing, and related controls
+- Client-side checks for dangerous JavaScript sinks, mixed content, open redirects, exposed secrets, and unsafe `postMessage` usage
+- Persistent website scan history and live progress polling
 
-## Current Architecture (MVP)
+### API security
+
+- Static endpoint discovery for Spring Boot, Express.js, and FastAPI projects
+- OWASP API Top 10 review mapping
+- Non-destructive authentication and authorization probes
+- OpenAPI and Swagger contract analysis
+- Route-level contract drift detection
+- Review signals for missing authentication declarations, path parameters, operation IDs, request schemas, and deprecated operations
+
+### AI and ML security
+
+- Prompt-injection probes
+- Jailbreak probes
+- Model behavior evaluation
+- Safety and refusal assessment
+- Canary-leak detection
+- Caller-supplied golden-set evaluation
+- Accuracy and latency reporting
+
+### Security operations and developer workflows
+
+- Unified security graph connecting scans, findings, endpoints, repositories, and security references
+- Candidate attack-path generation
+- Automated GitHub security-fix pull requests
+- Security regression-test generation and evaluation
+- CycloneDX-compatible dependency inventory
+- Dependency posture checks and secret detection
+- Docker, Terraform, Kubernetes, and CI workflow checks
+- Docker-isolated exploit-validation sandbox
+- SARIF 2.1.0 export for GitHub Code Scanning
+- Configurable CI severity gates
+- Runtime/cloud posture correlation from supplied asset evidence
+- JSON, HTML, and Markdown reporting
+
+## Architecture
 
 ```text
-GitHub Repository URL  ──or──  ZIP File Upload
-                        │
-                        ▼
-             Clone / Extract to disk
-                        │
-                        ▼
-           Semgrep Static Analysis
-                        │
-                        ▼
-          Findings Normalization
-                        │
-                        ▼
-          Context Enrichment Layer
-        ├── Framework Detection
-        ├── Endpoint Extraction
-        ├── Snippet Extraction
-        └── Context Builder
-                        │
-                        ▼
-           Risk Scoring Engine
-                        │
-                        ▼
-            AI Analysis Layer  (Groq API)
-        ├── Model Router
-        ├── Prompt Builder
-        ├── Analysis Engine
-        └── Response Parser
-                        │
-                        ▼
-           Deduplication Layer
-                        │
-                        ▼
-           Findings Repository  (JSON)
-                        │
-                        ▼
-              Reporting Layer
-                        │
-                        ▼
-           Frontend Dashboard  (Next.js)
+Repository URL or ZIP
+        |
+        v
+Clone or extract with safety limits
+        |
+        v
+Semgrep static analysis --------------------+
+        |                                    |
+        v                                    |
+Normalize findings                          |
+        |                                    |
+        +--> Framework, endpoint, snippet, and context enrichment
+        |                                    |
+        +--> Risk scoring -------------------+
+        |                                    |
+        +--> Model routing and AI/RAG analysis
+        |                                    |
+        +--> Deduplication
+        |                                    |
+        v                                    v
+Findings repository                    Security graph
+(JSON compatibility + SQLAlchemy)      and attack-path candidates
+        |
+        +--> Findings, reports, SARIF, CI gates, regression tests
+        |
+        v
+Next.js security workspace
 ```
 
----
+The platform also exposes independent security-analysis services for websites, APIs, AI/ML targets, supply chain, infrastructure, runtime evidence, and exploit validation.
 
-## Technology Stack
+## Technology stack
 
 ### Backend
 
-- Python 3.11+
-- FastAPI
-- Groq API (LLaMA 3.1 / 3.3)
-- JSON file storage (temporary — PostgreSQL planned)
-- Semgrep (must be installed separately — see setup)
+- Python 3.11+ recommended
+- FastAPI and Uvicorn
+- SQLAlchemy and Alembic
+- SQLite for local development
+- PostgreSQL through `DATABASE_URL`
+- Semgrep 1.38.0 or newer
+- GitPython
+- HTTPX
+- Groq API with LLaMA models
+- LangChain, ChromaDB, and local Hugging Face embeddings for RAG analysis
 
 ### Frontend
 
-- Next.js 14 (App Router)
+- Next.js 16
+- React 19
 - TypeScript
-- Tailwind CSS
-- React Query
+- Tailwind CSS 4
+- TanStack React Query
+- Recharts
+- Lucide icons
 
-### AI / Security
-
-- Semgrep (static analysis)
-- OWASP vulnerability mapping
-- MITRE ATT&CK references
-- AI reasoning via Groq API
-
----
-
-## Local Development Setup
+## Quick start
 
 ### Prerequisites
 
-| Tool | Required version | Notes |
-|---|---|---|
-| Python | 3.11 or 3.12 recommended | 3.13 works but Semgrep pip install may vary |
-| Node.js | 18+ | For frontend |
-| Semgrep | 1.38.0+ | **Must be on system PATH** — see note below |
-| Git | Any recent version | For repository cloning |
+| Tool | Version | Notes |
+|---|---:|---|
+| Python | 3.11-3.13 | 3.11 or 3.12 is recommended for dependency compatibility |
+| Node.js | 18+ | Required for the frontend |
+| Git | Recent | Required for GitHub repository scans |
+| Semgrep | 1.38.0+ | Must be available as `semgrep` on `PATH` |
+| Docker | Optional | Required for exploit-validation sandbox and Compose deployment |
+| PostgreSQL | Optional | Required only when using a PostgreSQL `DATABASE_URL` |
 
-> **Important — Semgrep installation:**
-> Semgrep must be installed and accessible as `semgrep` on your system PATH.
-> The platform calls `semgrep` directly as a binary (not `python -m semgrep`,
-> which was deprecated in Semgrep 1.38.0).
->
-> Install Semgrep:
-> ```bash
-> pip install semgrep
-> ```
-> Verify it works:
-> ```bash
-> semgrep --version
-> ```
+Install Semgrep separately and verify it:
 
----
+```bash
+pip install semgrep
+semgrep --version
+```
 
-### 1. Clone the repository
+### Clone and install
 
 ```bash
 git clone https://github.com/Suresh-Nagvanshi/ai-appsec-platform.git
 cd ai-appsec-platform
+
+python -m venv .venv
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+# Windows cmd
+.venv\Scripts\activate.bat
+
+pip install -r backend/requirements.txt
 ```
 
----
+### Configure the backend
 
-### 2. Backend setup
-
-```bash
-pip install -r requirements.txt
-```
-
-Create a `.env` file in the project root:
+Create a root `.env` file:
 
 ```env
-GROQ_API_KEY=your_groq_api_key_here
+# AI analysis. Optional; local fallback analysis works without it.
+GROQ_API_KEY=your_groq_api_key
+
+# Protect application routes. Leave blank only for local development.
+API_KEY=replace_with_a_long_random_value
+API_KEY_DISABLED=false
+
+# Frontend origins.
+CORS_ORIGINS=http://localhost:3000
+
+# Optional database override. SQLite is the default.
+# DATABASE_URL=postgresql+psycopg2://appsec:appsec@localhost:5432/appsec
+
+# Optional GitHub token for automated security-fix pull requests.
+# GITHUB_TOKEN=github_token_with_required_repository_permissions
 ```
 
-Get a free Groq API key at: https://console.groq.com
-
----
-
-### 3. Start the backend
-
-> ⚠️ **Use `python -m backend.run` — NOT `uvicorn backend.main:app --reload` directly.**
->
-> The custom launcher (`backend/run.py`) configures `reload_excludes` to prevent
-> uvicorn from watching cloned repository files and extracted ZIP contents.
-> Running uvicorn directly causes WatchFiles to trigger server reloads mid-scan,
-> killing in-progress scans.
+Start the backend with the project launcher:
 
 ```bash
 python -m backend.run
 ```
 
-Backend API will be available at:
+Use the launcher instead of calling Uvicorn directly. It excludes cloned repositories, extracted archives, uploads, results, and generated JSON from reload watching.
 
-```
-http://127.0.0.1:8000
-```
+Backend URLs:
 
-API docs (auto-generated):
+- API: `http://127.0.0.1:8000`
+- Health: `http://127.0.0.1:8000/health`
+- OpenAPI docs: `http://127.0.0.1:8000/docs`
 
-```
-http://127.0.0.1:8000/docs
-```
+### Configure and start the frontend
 
----
-
-### 4. Frontend setup
+From the repository root:
 
 ```bash
+copy frontend\.env.local.example frontend\.env.local
 cd frontend
-```
-
-Create the frontend environment file from the example:
-
-```bash
-cp .env.local.example .env.local
-```
-
-Then edit `frontend/.env.local` and set:
-
-```env
-BACKEND_API_URL=http://localhost:8000
-BACKEND_API_KEY=your_api_key_here
-```
-
-Install dependencies and start the dev server:
-
-```bash
 npm install
 npm run dev
 ```
 
-Frontend will be available at:
+Recommended `frontend/.env.local`:
 
+```env
+# Used by the Next.js backend proxy.
+BACKEND_API_URL=http://localhost:8000
+BACKEND_API_KEY=replace_with_the_same_value_as_API_KEY
+
+# Compatibility fallback supported by the proxy.
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_KEY=replace_with_the_same_value_as_API_KEY
 ```
-http://localhost:3000
-```
 
----
+Frontend URL: `http://localhost:3000`
 
-## Current Project Status
+## Configuration
 
-**Phase:** MVP — GitHub URL scanning + ZIP upload scanning
+| Variable | Required | Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | No | Enables Groq-backed vulnerability analysis and fix generation |
+| `API_KEY` | Recommended | Protects all application routers |
+| `API_KEY_DISABLED` | No | Explicit local/test bypass; do not enable in deployments |
+| `CORS_ORIGINS` | No | Comma-separated allowed frontend origins |
+| `DATABASE_URL` | No | SQLAlchemy connection string; SQLite is the default |
+| `GITHUB_TOKEN` | For PRs | Allows automated branch, commit, and pull-request creation |
+| `BACKEND_API_URL` | Frontend | Server-side URL used by the Next.js proxy |
+| `BACKEND_API_KEY` | Frontend | Server-side API key forwarded by the proxy |
 
-**Status:** Actively under development
+## API surface
 
-### What is working
+All routes below are protected by `X-API-Key` when `API_KEY` is configured. `/health` is public.
 
-| Feature | Status |
-|---|---|
-| GitHub repository URL scanning | ✅ Working |
-| ZIP file upload scanning | ✅ Working |
-| Semgrep static analysis | ✅ Working |
-| Context enrichment pipeline | ✅ Wired |
-| Risk scoring | ✅ Wired |
-| AI analysis via Groq (LLaMA 3.3 70B / 3.1 8B) | ✅ Wired |
-| Finding deduplication | ✅ Wired |
-| Findings persistence (JSON) | ✅ Wired |
-| Scan state persistence across restarts | ✅ Fixed |
-| Frontend scan session page | ✅ Working |
-| Frontend findings dashboard | ✅ Working |
-| Scan progress polling | ✅ Working |
+### Core scanning
 
-### Known limitations (MVP scope)
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/api/scans/github` | Start a GitHub scan |
+| `POST` | `/api/scans/zip` | Start a ZIP scan |
+| `GET` | `/api/scans` | List scans |
+| `GET` | `/api/scans/{scan_id}` | Poll scan progress |
+| `GET` | `/api/scans/{scan_id}/diff` | Read incremental diff metadata |
+| `GET` | `/findings` | List findings with filters and pagination |
+| `GET` | `/findings/{finding_id}` | Read a finding |
+| `PATCH` | `/findings/{finding_id}/status` | Update triage status |
+| `POST` | `/report/generate` | Generate a structured report |
+| `GET` | `/report/download/{scan_id}` | Download JSON, HTML, or Markdown |
 
-| Limitation | Notes |
-|---|---|
-| No authentication | All endpoints are public — do not expose publicly |
-| In-memory scan state | Persisted to `data/scan_state.json`; lost only on manual file delete |
-| Hybrid persistence during migration | Scan state and findings use SQLAlchemy; JSON files remain as a compatibility/fallback store |
-| No file size limits | Large repositories / ZIPs will take significant time |
-| AI analysis is synchronous per-finding | Large repos with many findings will be slow |
+### API security
 
----
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/api/api-security/endpoints` | Discover source-defined endpoints |
+| `POST` | `/api/api-security/mapping` | Map endpoints to OWASP API Top 10 review areas |
+| `POST` | `/api/api-security/authz-test` | Run bounded, non-destructive GET probes |
+| `POST` | `/api/api-security/contract` | Analyze OpenAPI/Swagger and compare route drift |
 
-## Implemented Components
+### AI/ML security
 
-### Backend
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/api/ai-security/test` | Run prompt-injection, jailbreak, behavior, and safety probes |
+| `POST` | `/api/ai-security/evaluate` | Run a caller-supplied model golden set |
 
-- FastAPI application with full scan pipeline
-- GitHub repository URL scan endpoint (`POST /api/scans/github`)
-- ZIP file upload scan endpoint (`POST /api/scans/file`)
-- Scan state polling endpoint (`GET /api/scans/{scan_id}`)
-- Scan list endpoint (`GET /api/scans`)
-- Findings API (`GET /findings`)
-- Report generation endpoint
-- Scan state persistence (`data/scan_state.json`)
+### Operations and developer workflow
 
-### AI Layer
+| Method | Route | Purpose |
+|---|---|---|
+| `GET` | `/api/security-graph` | Build the unified security graph |
+| `POST` | `/api/fix/pull-request` | Create a GitHub security-fix pull request |
+| `POST` | `/api/regression-tests/generate` | Convert findings into regression specifications |
+| `POST` | `/api/regression-tests/evaluate` | Check whether findings reappeared |
+| `POST` | `/api/supply-chain/analyze` | Generate dependency inventory and detect secrets |
+| `POST` | `/api/infrastructure/analyze` | Analyze Docker, Terraform, Kubernetes, and CI files |
+| `POST` | `/api/validation-sandbox/run` | Run an allowlisted command in a Docker sandbox |
+| `GET` | `/api/ci/sarif/{scan_id}` | Export SARIF 2.1.0 |
+| `POST` | `/api/ci/gate` | Evaluate a severity-based CI gate |
+| `POST` | `/api/runtime-security/posture` | Correlate supplied runtime asset evidence |
 
-- Prompt Builder
-- Response Parser
-- Analysis Engine
-- Async Analysis Engine
-- Batch Analysis Engine
-- Model Router (routes simple findings to LLaMA 3.1 8B, complex to LLaMA 3.3 70B)
+## Frontend
 
-### Context Enrichment
+The Next.js workspace provides:
 
-- Framework Detection
-- Endpoint Extraction
-- Snippet Extraction
-- Context Builder
+- Overview dashboard with posture metrics and recent activity
+- Scan creation, history, progress, logs, and pipeline timelines
+- Repository registration, branch selection, and scan actions
+- Findings list, filters, detail views, AI analysis, code context, and remediation
+- Website security scanning and finding inspection
+- Report generation and export
+- Workspace settings and connection status
+- Responsive desktop sidebar and mobile navigation
 
-### Security Processing
+The frontend calls the same-origin route `/api/backend/*`. The Next.js proxy forwards requests to FastAPI and injects the configured backend API key.
 
-- Risk Scoring Engine
-- Finding Deduplicator
-- Findings Repository
-- Report Generator
-
-### Frontend
-
-- Security Dashboard (Overview)
-- Scan session page with live pipeline steps + logs
-- Findings list and detail pages
-- Repositories page
-- Reports page
-- Real-time scan progress polling via React Query
-
----
-
-## Directory Structure
+## Project structure
 
 ```text
-ai-appsec-platform/
+.
 ├── backend/
-│   ├── main.py                  # FastAPI app entrypoint
-│   ├── run.py                   # Uvicorn launcher (use this to start)
-│   ├── api/
-│   │   ├── scans.py             # Scan endpoints
-│   │   ├── scan_state.py        # Shared in-memory + disk scan state
-│   │   └── findings.py          # Findings endpoints (currently serving mock + real)
-│   ├── services/
-│   │   └── scan_orchestrator.py # Full scan pipeline wiring
-│   ├── ai/
-│   │   ├── analysis_engine.py
-│   │   ├── prompt_builder.py
-│   │   ├── response_parser.py
-│   │   └── model_router.py
-│   ├── enrichment/
-│   │   └── context_builder.py
-│   ├── risk/
-│   │   └── risk_scorer.py
-│   ├── deduplication/
-│   │   └── finding_deduplicator.py
-│   └── storage/
-│       └── findings_repository.py
+│   ├── main.py                         FastAPI application and protected routers
+│   ├── run.py                          Uvicorn launcher with reload exclusions
+│   ├── api/                            Feature APIs
+│   │   ├── scans.py                    GitHub and ZIP scans
+│   │   ├── website_scans.py            Website scanning
+│   │   ├── api_security.py             API discovery, mapping, probes, contracts
+│   │   ├── ai_security.py              AI/ML testing and evaluation
+│   │   ├── security_graph.py            Unified graph
+│   │   ├── regression_tests.py          Regression registry
+│   │   ├── supply_chain.py              SBOM inventory and secrets
+│   │   ├── infrastructure_security.py   IaC and container checks
+│   │   ├── validation_sandbox.py        Docker exploit validation
+│   │   ├── ci_security.py               SARIF and CI gates
+│   │   └── runtime_security.py          Runtime posture correlation
+│   ├── ai/                             AI, model routing, prompts, and RAG
+│   ├── enrichment/                     Framework, endpoint, and context enrichment
+│   ├── services/                       Scan and website orchestration
+│   ├── storage/                        Findings and diff persistence
+│   ├── db/                             SQLAlchemy models, sessions, migrations
+│   └── test_*.py                       Backend test suite
 ├── frontend/
 │   └── src/
-│       ├── app/                 # Next.js App Router pages
-│       ├── components/          # Shared UI components
-│       ├── hooks/               # React Query hooks
-│       └── services/            # API service layer
-├── data/
-│   └── scan_state.json          # Persisted scan state (auto-created)
-├── results/                     # Semgrep raw output (auto-created)
-├── repos/                       # Cloned repositories (auto-created, auto-cleaned)
-├── uploads/                     # ZIP uploads (auto-created, auto-cleaned)
-├── extracted/                   # Extracted ZIP contents (auto-created, auto-cleaned)
-└── .env                         # Environment variables (create manually)
+│       ├── app/                        Next.js App Router pages and proxy
+│       ├── components/                 Shared UI and feature components
+│       ├── hooks/                      React Query hooks
+│       ├── services/                   Typed API clients
+│       └── providers/                  Application providers
+├── data/                               Knowledge bases and scan artifacts
+├── database/                           Local database and compatibility state
+├── extracted/                          Temporary extracted archives
+├── repos/                              Temporary cloned repositories
+├── results/                            Semgrep results
+├── uploads/                            Temporary ZIP uploads
+├── reports/                            Generated report artifacts
+├── docker-compose.yml                  PostgreSQL, backend, and frontend services
+└── README.md
 ```
 
----
+Generated runtime files and credentials should not be committed.
 
-## Bug Fixes Applied
+## Security boundaries
 
-### Fix 1 — Semgrep deprecated invocation (May 2026)
+- API routes require `X-API-Key` when `API_KEY` is configured.
+- GitHub URLs require HTTPS and the exact `github.com` host.
+- Branch names are validated before Git operations.
+- ZIP uploads enforce compressed size, member-count, and extracted-size limits.
+- Website and API probes reject local/private targets and credential-bearing URLs.
+- AI/ML testing uses bounded probes and does not claim that a PASS proves safety.
+- Exploit validation uses Docker with no network, a read-only project mount, dropped capabilities, no-new-privileges, memory/CPU/PID limits, and an image allowlist.
+- Automated PR generation requires explicit `GITHUB_TOKEN` configuration and exact single-occurrence source replacement.
+- Runtime/cloud posture analysis consumes supplied evidence; it does not silently connect to cloud accounts.
 
-**Problem:** Semgrep was called as `python -m semgrep`, which was deprecated in
-Semgrep 1.38.0. On Windows with a bundled Semgrep binary, this also caused a
-fatal `Failed to import the site module` crash due to Python environment variable
-pollution (`PYTHONUTF8`, `PYTHONIOENCODING`).
+Do not expose the backend publicly without configuring API keys, CORS, deployment isolation, rate limits, and tenant authorization.
 
-**Fix:** Semgrep is now called as the `semgrep` binary directly. The subprocess
-environment no longer injects Python-specific encoding variables.
+## Testing
 
-### Fix 2 — Scan state lost on server restart (May 2026)
+Run the complete backend suite from the repository root:
 
-**Problem:** Scan state was held in an in-memory dict only. Uvicorn `--reload`
-was triggered by WatchFiles detecting file writes in the `repos/` directory
-(from cloning), killing the running scan and wiping all scan state.
+```bash
+python -m pytest -q
+```
 
-**Fix:**
-- Created `backend/run.py` launcher with `reload_excludes` for `repos/`,
-  `extracted/`, `uploads/`, `results/`, `data/`, `*.json`
-- Added disk persistence to `backend/api/scan_state.py` — scan state is
-  written to `data/scan_state.json` after every mutation and loaded on startup
+Run focused backend tests:
 
-### Fix 3 — Circular import on startup (May 2026)
+```bash
+python -m pytest -q backend/test_api_security.py
+python -m pytest -q backend/test_api_security.py
+python -m pytest -q backend/test_supply_chain.py
+```
 
-**Problem:** `backend/api/scans.py` and `backend/services/scan_orchestrator.py`
-imported each other, causing an `ImportError` on startup.
+Run frontend lint and build:
 
-**Fix:** Shared `_scans` dict moved to `backend/api/scan_state.py`. Both modules
-import from the neutral shared module — no cycle.
+```bash
+npm --prefix frontend run lint
+npm --prefix frontend run build
+```
 
----
+The suite currently covers scanning, persistence, enrichment, AI analysis, API security, AI/ML evaluation, supply chain, infrastructure, regression tests, CI output, runtime posture, and sandbox controls.
 
-## Current Implementation Status
+## Known limitations
 
-The following items from the original MVP checklist are now implemented:
+- RBAC and multi-tenant isolation are not implemented.
+- PostgreSQL support exists through SQLAlchemy, but JSON compatibility paths remain during migration.
+- The runtime/cloud endpoint correlates supplied asset evidence; provider-native integrations are not yet included.
+- CVE matching requires an authoritative vulnerability feed or scanner; local inventory does not claim CVE coverage.
+- AI analysis can be slow for large finding sets and may be affected by provider rate limits.
+- Website and API probing are bounded passive/low-impact checks, not a full authenticated penetration test.
+- Production Dockerfiles and deployment hardening still require verification in the target environment.
 
-- `GET /findings` and `GET /findings/{id}` use persisted findings rather than mock data
-- Findings detail page consumes the real findings API
-- SQLAlchemy persistence supports SQLite locally and PostgreSQL through `DATABASE_URL`
-- API-key middleware protects application routers; `/health` remains public
-- Docker Compose defines PostgreSQL, backend, and frontend services
-- Branch selection and incremental/diff scanning are available for GitHub scans
-- Website URL scanning includes crawling, security-header checks, and client-side analysis
-- API endpoint discovery via `POST /api/api-security/endpoints` for managed projects
-- OWASP API Top 10 review mapping via `POST /api/api-security/mapping`
-- Non-destructive authentication/authorization probes via `POST /api/api-security/authz-test`
-- AI/ML security assessment via `POST /api/ai-security/test` with prompt-injection, jailbreak, model-behavior, and safety probes
-- Unified security graph via `GET /api/security-graph`, including findings, endpoints, references, and attack-path candidates
-- Automated GitHub security-fix pull requests via `POST /api/fix/pull-request`
-- Security regression tests via `POST /api/regression-tests/generate` and `/evaluate`
-- OpenAPI/Swagger contract analysis and route-drift detection via `POST /api/api-security/contract`
-- Supply-chain analysis via `POST /api/supply-chain/analyze` with SBOM-compatible inventory and secret detection
-- IaC/container security analysis via `POST /api/infrastructure/analyze` for Docker, Terraform, Kubernetes, and CI workflows
-- Controlled exploit validation via `POST /api/validation-sandbox/run` using Docker isolation
-- CI integration via `GET /api/ci/sarif/{scan_id}` and `POST /api/ci/gate`
-- AI model golden-set evaluation via `POST /api/ai-security/evaluate` with accuracy and latency metrics
-- Runtime/cloud posture correlation via `POST /api/runtime-security/posture`
+## Roadmap
 
-The remaining delivery work is:
+Prioritized next steps:
 
-- Complete production Dockerfiles and container startup verification
-- Add RBAC and multi-tenant data isolation
-- Harden upload and scan resource limits
-- Replace remaining JSON compatibility paths after database migration is validated
+1. Production Dockerfiles and deployment smoke tests
+2. RBAC, organizations, and tenant-isolated data access
+3. GitHub App integration and pull-request workflow automation
+4. Provider-native cloud posture integrations
+5. Dependency reachability and authoritative CVE matching
+6. GraphQL and Postman contract imports
+7. VS Code extension and richer CI annotations
+8. Audit logs, webhooks, and organization policy controls
 
----
+## Troubleshooting
 
-## Planned Features
+### Frontend shows backend errors
 
-### Repository Security
+Confirm the backend is running on port 8000 and that `frontend/.env.local` contains:
 
-- Branch selection
-- Incremental / diff scanning
-- GitHub App integration
+```env
+BACKEND_API_URL=http://localhost:8000
+BACKEND_API_KEY=your_backend_api_key
+```
 
-### Website Security
+The proxy also accepts `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_API_KEY` as compatibility fallbacks. Restart the Next.js dev server after changing environment variables.
 
-- Website URL scanner
-- Crawling engine
-- Client-side vulnerability analysis
+### Scans restart or disappear during development
 
-### API Security
+Start the backend with:
 
+```bash
+python -m backend.run
+```
 
-### AI/ML Security Testing
+Do not run `uvicorn backend.main:app --reload` directly because cloned and extracted files can trigger unwanted reloads.
 
+### Semgrep cannot be found
 
-### Enterprise Features
+Verify that the binary is installed and available on `PATH`:
 
-- Organization and team management
-- RBAC
-- Audit logs
-- CI/CD integrations
-- Webhooks
+```bash
+semgrep --version
+```
 
----
+### Exploit validation is unavailable
+
+Install Docker and confirm the daemon is running. The sandbox intentionally returns an error when Docker is unavailable.
 
 ## Contributing
+
+1. Create a focused branch.
+2. Add or update tests for behavior changes.
+3. Run backend tests and frontend lint/build.
+4. Keep generated artifacts, credentials, cloned repositories, and uploads out of commits.
+5. Use focused commit messages that describe the feature or fix.
 
 Maintained by **Suresh Nagvanshi**.
