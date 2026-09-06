@@ -392,6 +392,7 @@ The following items from the original MVP checklist are now implemented:
 - OpenAPI/Swagger contract analysis and route-drift detection via `POST /api/api-security/contract`
 - Supply-chain analysis via `POST /api/supply-chain/analyze` with SBOM-compatible inventory and secret detection
 - IaC/container security analysis via `POST /api/infrastructure/analyze` for Docker, Terraform, Kubernetes, and CI workflows
+- Controlled exploit validation via `POST /api/validation-sandbox/run` using Docker isolation
 
 The remaining delivery work is:
 
