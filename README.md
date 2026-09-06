@@ -390,6 +390,7 @@ The following items from the original MVP checklist are now implemented:
 - Automated GitHub security-fix pull requests via `POST /api/fix/pull-request`
 - Security regression tests via `POST /api/regression-tests/generate` and `/evaluate`
 - OpenAPI/Swagger contract analysis and route-drift detection via `POST /api/api-security/contract`
+- Supply-chain analysis via `POST /api/supply-chain/analyze` with SBOM-compatible inventory and secret detection
 
 The remaining delivery work is:
 
