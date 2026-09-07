@@ -14,6 +14,8 @@ import {
   Globe,
   CircleHelp,
   Activity,
+  Network,
+  Bot,
 } from "lucide-react";
 
 const navigation = [
@@ -41,6 +43,21 @@ const navigation = [
     name: "Website Security",
     href: "/website-security",
     icon: Globe,
+  },
+  {
+    name: "API Security",
+    href: "/api-security",
+    icon: Network,
+  },
+  {
+    name: "AI/ML Security",
+    href: "/ai-security",
+    icon: Bot,
+  },
+  {
+    name: "Security Operations",
+    href: "/security-operations",
+    icon: Activity,
   },
   {
     name: "Reports",
