@@ -57,6 +57,7 @@ from backend.risk.risk_scorer import RiskScorer
 from backend.ai.model_router import ModelRouter
 from backend.deduplication.finding_deduplicator import FindingDeduplicator
 from backend.storage.findings_repository import FindingsRepository
+from backend.scanning.multi_engine import run_multi_engine_scan
 
 # Live scan-state dict shared with the API polling endpoint
 from backend.api.scan_state import _scans, save_state
@@ -439,10 +440,21 @@ async def run_github_scan(
         semgrep_data = await asyncio.to_thread(
             _run_semgrep, repo_path, result_file, include_paths=changed_files
         )
-        raw_findings: List[dict] = semgrep_data.get("results", [])
+        engine_results = await asyncio.to_thread(
+            run_multi_engine_scan,
+            repo_path,
+            semgrep_data,
+            RESULT_DIR / f"{scan_id}_engines",
+        )
+        raw_findings: List[dict] = engine_results["findings"]
 
         _update_scan(scan_id, progress=45,
-                     log_message=f"Semgrep complete — {len(raw_findings)} raw findings",
+                     log_message=(
+                         f"Multi-engine analysis complete — {engine_results['raw_finding_count']} raw findings, "
+                         f"{engine_results['correlated_finding_count']} correlated findings "
+                         f"({', '.join(engine_results['engines_used']) or 'semgrep'})"
+                     ),
+                     extra={"engine_status": engine_results["engine_status"]},
                      timeline_step_id="1", timeline_status="COMPLETED")
 
         _update_scan(scan_id, progress=50,
@@ -493,6 +505,10 @@ async def run_github_scan(
                 "commit": current_commit,
                 "results": deduplicated,
                 "summary": summary,
+                "engine_status": engine_results["engine_status"],
+                "engines_used": engine_results["engines_used"],
+                "raw_finding_count": engine_results["raw_finding_count"],
+                "correlated_finding_count": engine_results["correlated_finding_count"],
             },
         )
 
@@ -576,10 +592,21 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
                      timeline_step_id="1", timeline_status="RUNNING")
 
         semgrep_data = await asyncio.to_thread(_run_semgrep, extract_path, result_file)
-        raw_findings: List[dict] = semgrep_data.get("results", [])
+        engine_results = await asyncio.to_thread(
+            run_multi_engine_scan,
+            extract_path,
+            semgrep_data,
+            RESULT_DIR / f"{scan_id}_engines",
+        )
+        raw_findings: List[dict] = engine_results["findings"]
 
         _update_scan(scan_id, progress=45,
-                     log_message=f"Semgrep complete — {len(raw_findings)} raw findings",
+                     log_message=(
+                         f"Multi-engine analysis complete — {engine_results['raw_finding_count']} raw findings, "
+                         f"{engine_results['correlated_finding_count']} correlated findings "
+                         f"({', '.join(engine_results['engines_used']) or 'semgrep'})"
+                     ),
+                     extra={"engine_status": engine_results["engine_status"]},
                      timeline_step_id="1", timeline_status="COMPLETED")
 
         _update_scan(scan_id, progress=50,
@@ -622,6 +649,10 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
                 "filename": safe_name,
                 "results": deduplicated,
                 "summary": summary,
+                "engine_status": engine_results["engine_status"],
+                "engines_used": engine_results["engines_used"],
+                "raw_finding_count": engine_results["raw_finding_count"],
+                "correlated_finding_count": engine_results["correlated_finding_count"],
             },
         )
 

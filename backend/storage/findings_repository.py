@@ -72,6 +72,10 @@ class FindingsRepository:
             "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "scan_type": scan_results.get("scan_type", "unknown"),
             "summary": scan_results.get("summary", {}),
+            "engine_status": scan_results.get("engine_status", {}),
+            "engines_used": scan_results.get("engines_used", []),
+            "raw_finding_count": scan_results.get("raw_finding_count", len(findings)),
+            "correlated_finding_count": scan_results.get("correlated_finding_count", len(findings)),
             "findings": findings,
         }
 

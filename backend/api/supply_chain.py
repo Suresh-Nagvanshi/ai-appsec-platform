@@ -2,8 +2,11 @@
 
 import json
 import re
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -28,14 +31,67 @@ class SupplyChainRequest(BaseModel):
     include_secrets: bool = True
 
 
-def _component(name: str, version: str, ecosystem: str, source: str) -> dict:
-    return {
+class SbomRequest(BaseModel):
+    project_path: str
+    format: str = "cyclonedx"
+    include_secrets: bool = False
+
+
+def _component(name: str, version: str, ecosystem: str, source: str, scope: str | None = None) -> dict:
+    component = {
         "type": "library",
         "name": name,
         "version": version or "UNKNOWN",
         "purl": f"pkg:{ecosystem}/{name}@{version or 'UNKNOWN'}",
         "evidence": source,
     }
+    if scope:
+        component["scope"] = scope
+    return component
+
+
+def _component_key(component: dict) -> str:
+    return str(component.get("purl") or f"{component.get('name')}@{component.get('version')}")
+
+
+def _parse_package_lock(path: Path) -> tuple[list[dict], list[dict], list[dict]]:
+    """Parse npm lockfile v2/v3 packages and direct dependency relationships."""
+    try:
+        lock = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], [{"type": "invalid_manifest", "severity": "MEDIUM", "file": path.name, "message": "package-lock.json is not valid JSON."}], []
+
+    components: list[dict] = []
+    dependencies: list[dict] = []
+    packages = lock.get("packages") or {}
+    if packages:
+        for package_path, package in packages.items():
+            if not package_path or package_path == "":
+                continue
+            name = package_path.rsplit("node_modules/", 1)[-1]
+            if name.startswith("@") and "/" in name:
+                name = "@" + name[1:].replace("/node_modules/", "/", 1)
+            version = str(package.get("version") or "UNKNOWN")
+            component = _component(name, version, "npm", path.name, "optional" if package.get("optional") else None)
+            components.append(component)
+            source_ref = _component_key(component)
+            for dependency_name, dependency_spec in (package.get("dependencies") or {}).items():
+                dependency_version = str(dependency_spec) if isinstance(dependency_spec, str) else "UNKNOWN"
+                dependency_component = _component(dependency_name, dependency_version, "npm", path.name)
+                dependencies.append({"from": source_ref, "to": _component_key(dependency_component)})
+    else:
+        # npm lockfile v1 stores the dependency tree under `dependencies`.
+        def walk(items: dict, parent: str | None = None) -> None:
+            for name, package in items.items():
+                component = _component(name, str(package.get("version") or "UNKNOWN"), "npm", path.name)
+                components.append(component)
+                current = _component_key(component)
+                if parent:
+                    dependencies.append({"from": parent, "to": current})
+                walk(package.get("dependencies") or {}, current)
+
+        walk(lock.get("dependencies") or {})
+    return components, [], dependencies
 
 
 def _parse_requirements(path: Path) -> tuple[list[dict], list[dict]]:
@@ -70,20 +126,25 @@ def _parse_package_json(path: Path) -> tuple[list[dict], list[dict]]:
     return components, findings
 
 
-def _parse_manifests(project_path: Path) -> tuple[list[dict], list[dict]]:
-    components, findings = [], []
+def _parse_manifests(project_path: Path) -> tuple[list[dict], list[dict], list[dict]]:
+    components, findings, dependencies = [], [], []
     for path in project_path.rglob("*"):
         if not path.is_file() or any(part in _SKIP_DIRS for part in path.parts):
             continue
         if path.name in {"requirements.txt", "requirements-dev.txt"}:
             found_components, found_findings = _parse_requirements(path)
+            found_dependencies = []
         elif path.name == "package.json":
             found_components, found_findings = _parse_package_json(path)
+            found_dependencies = []
+        elif path.name == "package-lock.json":
+            found_components, found_findings, found_dependencies = _parse_package_lock(path)
         else:
             continue
         components.extend(found_components)
         findings.extend(found_findings)
-    return components, findings
+        dependencies.extend(found_dependencies)
+    return components, findings, dependencies
 
 
 def _find_secrets(project_path: Path) -> list[dict]:
@@ -112,21 +173,103 @@ def _find_secrets(project_path: Path) -> list[dict]:
 
 
 def analyze_supply_chain(project_path: Path, include_secrets: bool = True) -> dict:
-    components, findings = _parse_manifests(project_path)
+    components, findings, dependencies = _parse_manifests(project_path)
     if include_secrets:
         findings.extend(_find_secrets(project_path))
     return {
-        "format": "CycloneDX-compatible inventory",
+        "format": "normalized dependency inventory",
         "project_path": str(project_path),
         "components": components,
+        "dependencies": dependencies,
         "findings": findings,
         "summary": {
             "components": len(components),
+            "dependency_edges": len(dependencies),
             "secret_findings": sum(item["type"] == "secret_exposure" for item in findings),
             "dependency_findings": sum(item["type"] != "secret_exposure" for item in findings),
         },
         "disclaimer": "This inventory does not query a CVE database. Use the component list with an authoritative vulnerability feed for CVE matching.",
     }
+
+
+def _bom_ref(component: dict) -> str:
+    digest = sha256(_component_key(component).encode("utf-8")).hexdigest()[:16]
+    return f"pkg-{digest}"
+
+
+def _unique_components(components: list[dict]) -> list[dict]:
+    unique: dict[str, dict] = {}
+    for component in components:
+        unique.setdefault(_component_key(component), component)
+    return list(unique.values())
+
+
+def _cyclonedx_bom(report: dict) -> dict:
+    components = _unique_components(report["components"])
+    ref_by_key = {_component_key(component): _bom_ref(component) for component in components}
+    dependencies = []
+    for edge in report.get("dependencies", []):
+        source_ref = ref_by_key.get(edge.get("from")) or f"pkg-{sha256(str(edge.get('from')).encode()).hexdigest()[:16]}"
+        target_ref = ref_by_key.get(edge.get("to")) or f"pkg-{sha256(str(edge.get('to')).encode()).hexdigest()[:16]}"
+        dependencies.append({"ref": source_ref, "dependsOn": [target_ref]})
+    grouped: dict[str, set[str]] = {}
+    for item in dependencies:
+        grouped.setdefault(item["ref"], set()).update(item["dependsOn"])
+    return {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "serialNumber": f"urn:uuid:{uuid4()}",
+        "version": 1,
+        "metadata": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "component": {"type": "application", "name": Path(report["project_path"]).name or "application", "version": "unknown"},
+        },
+        "components": [
+            {"type": item["type"], "bom-ref": ref_by_key[_component_key(item)], "name": item["name"], "version": item["version"], "purl": item["purl"]}
+            for item in components
+        ],
+        "dependencies": [{"ref": ref, "dependsOn": sorted(targets)} for ref, targets in grouped.items()],
+    }
+
+
+def _spdx_document(report: dict) -> dict:
+    components = _unique_components(report["components"])
+    package_by_key = {_component_key(component): f"SPDXRef-{_bom_ref(component)}" for component in components}
+    relationships = [{"spdxElementId": "SPDXRef-DOCUMENT", "relationshipType": "DESCRIBES", "relatedSpdxElement": package_id} for package_id in package_by_key.values()]
+    for edge in report.get("dependencies", []):
+        source = package_by_key.get(edge.get("from"))
+        target = package_by_key.get(edge.get("to"))
+        if source and target:
+            relationships.append({"spdxElementId": source, "relationshipType": "DEPENDS_ON", "relatedSpdxElement": target})
+    return {
+        "spdxVersion": "SPDX-2.3",
+        "dataLicense": "CC0-1.0",
+        "SPDXID": "SPDXRef-DOCUMENT",
+        "name": Path(report["project_path"]).name or "application",
+        "documentNamespace": f"https://ai-appsec.local/spdx/{uuid4()}",
+        "creationInfo": {"created": datetime.now(timezone.utc).isoformat(), "creators": ["Tool: AI AppSec Platform"]},
+        "packages": [
+            {
+                "SPDXID": package_by_key[_component_key(item)],
+                "name": item["name"],
+                "versionInfo": item["version"],
+                "downloadLocation": "NOASSERTION",
+                "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": item["purl"]}],
+            }
+            for item in components
+        ],
+        "relationships": relationships,
+    }
+
+
+def generate_sbom(project_path: Path, output_format: str = "cyclonedx", include_secrets: bool = False) -> dict:
+    normalized_format = output_format.lower().replace("-", "")
+    report = analyze_supply_chain(project_path, include_secrets=include_secrets)
+    if normalized_format in {"cyclonedx", "cdx"}:
+        return _cyclonedx_bom(report)
+    if normalized_format in {"spdx", "spdx23"}:
+        return _spdx_document(report)
+    raise ValueError("format must be 'cyclonedx' or 'spdx'")
 
 
 @router.post("/analyze")
@@ -136,3 +279,14 @@ def supply_chain_analysis(payload: SupplyChainRequest):
     except HTTPException:
         raise
     return analyze_supply_chain(project_path, payload.include_secrets)
+
+
+@router.post("/sbom")
+def supply_chain_sbom(payload: SbomRequest):
+    try:
+        project_path = _allowed_project_path(payload.project_path)
+        return generate_sbom(project_path, payload.format, payload.include_secrets)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

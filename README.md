@@ -285,7 +285,8 @@ All routes below are protected by `X-API-Key` when `API_KEY` is configured. `/he
 | `POST` | `/api/fix/pull-request` | Create a GitHub security-fix pull request |
 | `POST` | `/api/regression-tests/generate` | Convert findings into regression specifications |
 | `POST` | `/api/regression-tests/evaluate` | Check whether findings reappeared |
-| `POST` | `/api/supply-chain/analyze` | Generate dependency inventory and detect secrets |
+| `POST` | `/api/supply-chain/analyze` | Generate normalized dependency inventory, dependency edges, and detect secrets |
+| `POST` | `/api/supply-chain/sbom` | Generate CycloneDX 1.5 or SPDX 2.3 JSON SBOM |
 | `POST` | `/api/infrastructure/analyze` | Analyze Docker, Terraform, Kubernetes, and CI files |
 | `POST` | `/api/validation-sandbox/run` | Run an allowlisted command in a Docker sandbox |
 | `GET` | `/api/ci/sarif/{scan_id}` | Export SARIF 2.1.0 |
