@@ -8,7 +8,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
   const backendUrl = (
     process.env.BACKEND_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000"
+    "http://ai-appsec-platform.railway.internal:8000"
   ).replace(/\/$/, "");
   const target = `${backendUrl}/${path.map(encodeURIComponent).join("/")}${request.nextUrl.search}`;
   const headers = new Headers(request.headers);
