@@ -4,7 +4,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    PATH="/root/.local/bin:/usr/local/bin:${PATH}"
+    PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
 
 WORKDIR /app
 
@@ -12,18 +12,18 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ca-certificates \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (semgrep included in requirements.txt)
 COPY backend/requirements.txt /app/backend/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /app/backend/requirements.txt \
-    && pip install --no-cache-dir semgrep
+    && semgrep --version
 
 # Copy the complete repository
 COPY . /app
+
 
 # Railway supplies the PORT environment variable
 EXPOSE 8000

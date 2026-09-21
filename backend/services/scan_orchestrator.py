@@ -144,73 +144,79 @@ def _update_scan(
     save_state()
 
 
-# ── Semgrep runner (sync, called via asyncio.to_thread) ───────────────────────
+def _build_semgrep_cmd(result_file: Path, scan_target: str, include_paths: Optional[List[str]] = None) -> List[str]:
+    """
+    Build the semgrep command list.
 
-def _ensure_path_environment() -> None:
-    """Ensure Python Scripts, user site-packages, and system binary folders are in os.environ['PATH']."""
-    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-    path_set = {os.path.normpath(p).lower() for p in path_dirs if p}
-
-    python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
-    home = Path(os.path.expanduser("~"))
-    py_dir = Path(sys.executable).parent
-
-    candidates = [
-        py_dir,
-        py_dir / "Scripts",
-        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts",
-        home / ".local" / "bin",
-        Path("/usr/local/bin"),
-        Path("/usr/bin"),
-        Path("/bin"),
-    ]
-
-    additions = []
-    for cand in candidates:
-        if cand.exists():
-            norm = os.path.normpath(str(cand)).lower()
-            if norm not in path_set:
-                additions.append(str(cand))
-                path_set.add(norm)
-
-    if additions:
-        os.environ["PATH"] = os.pathsep.join(additions) + os.pathsep + os.environ.get("PATH", "")
-
-
-def _find_semgrep_executable() -> str:
-    """Find the semgrep executable across PATH, Python Scripts, user directories, and system paths."""
-    _ensure_path_environment()
-
-    for name in ("semgrep", "semgrep.exe", "semgrep.EXE", "semgrep.cmd", "semgrep.bat"):
-        exe = shutil.which(name)
-        if exe and os.path.exists(exe):
-            return exe
-
+    Strategy (cross-platform, works in Docker Linux containers):
+      1. Find the semgrep script via shutil.which / common paths.
+      2. ALWAYS invoke it as [sys.executable, semgrep_script, ...] — this
+         bypasses all OS shebang resolution issues that cause [Errno 2] on
+         Linux containers where the shebang interpreter path may not match.
+      3. If no semgrep file can be found at all, raise RuntimeError immediately.
+    """
+    # Build candidate directories to search
     py_dir = Path(sys.executable).parent
     home = Path(os.path.expanduser("~"))
     python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
 
-    candidates = [
-        py_dir / "semgrep.exe",
-        py_dir / "semgrep.EXE",
-        py_dir / "semgrep",
-        py_dir / "Scripts" / "semgrep.exe",
-        py_dir / "Scripts" / "semgrep.EXE",
-        py_dir / "Scripts" / "semgrep.cmd",
-        py_dir / "Scripts" / "semgrep",
-        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep.exe",
-        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep.EXE",
-        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep",
-        home / ".local" / "bin" / "semgrep",
-        Path("/usr/local/bin/semgrep"),
-        Path("/usr/bin/semgrep"),
+    # Augment PATH so shutil.which covers user site-packages scripts
+    extra_dirs = [
+        str(py_dir),
+        str(py_dir / "Scripts"),
+        str(home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts"),
+        str(home / ".local" / "bin"),
+        "/usr/local/bin",
+        "/usr/bin",
     ]
+    current_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = os.pathsep.join(extra_dirs) + os.pathsep + current_path
 
-    for cand in candidates:
-        if cand.exists():
-            return str(cand)
+    # --- Find the semgrep script file ---
+    semgrep_script: Optional[str] = None
 
-    raise RuntimeError("Semgrep executable not found; install semgrep and add it to PATH")
+    # 1. shutil.which searches the (now-augmented) PATH
+    for name in ("semgrep", "semgrep.exe", "semgrep.EXE"):
+        found = shutil.which(name)
+        if found and Path(found).exists():
+            semgrep_script = found
+            break
+
+    # 2. Hard-coded fallback paths (covers all common install locations)
+    if not semgrep_script:
+        for cand in [
+            py_dir / "semgrep",
+            py_dir / "semgrep.exe",
+            py_dir / "Scripts" / "semgrep",
+            py_dir / "Scripts" / "semgrep.exe",
+            home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep.exe",
+            home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep",
+            home / ".local" / "bin" / "semgrep",
+            Path("/usr/local/bin/semgrep"),
+            Path("/usr/bin/semgrep"),
+        ]:
+            if cand.exists():
+                semgrep_script = str(cand)
+                break
+
+    if not semgrep_script:
+        raise RuntimeError(
+            "Semgrep not found. Ensure 'semgrep' is listed in requirements.txt "
+            "and the Docker image was rebuilt after adding it."
+        )
+
+    # ALWAYS run via sys.executable — avoids [Errno 2] on Linux shebang scripts.
+    # On Windows this also works because .exe files just ignore the leading interpreter arg.
+    cmd = [sys.executable, semgrep_script, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
+
+    if include_paths:
+        for rel_path in include_paths:
+            cmd.append(rel_path)
+    else:
+        cmd.append(scan_target)
+
+    return cmd
+
 
 
 def _run_semgrep(
@@ -225,64 +231,25 @@ def _run_semgrep(
     Returns the parsed Semgrep results dict.
     Raises RuntimeError on failure.
     """
-    _ensure_path_environment()
     env = os.environ.copy()
     env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "LANG": "en_US.UTF-8"})
 
-    semgrep_executable = _find_semgrep_executable()
-
-    # Check if semgrep_executable is a shebang python script (common in virtualenvs)
-    is_shebang = False
-    if os.path.isfile(semgrep_executable):
-        try:
-            with open(semgrep_executable, "rb") as f:
-                if f.read(2) == b"#!":
-                    is_shebang = True
-        except Exception:
-            pass
-
-    if is_shebang:
-        cmd = [sys.executable, semgrep_executable, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
-    else:
-        cmd = [semgrep_executable, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
-
+    cmd = _build_semgrep_cmd(
+        result_file=result_file,
+        scan_target=str(scan_path),
+        include_paths=include_paths,
+    )
     logger.warning("Semgrep command: %r", cmd)
 
-    if include_paths:
-        # Scan only the changed files (relative paths from repo root)
-        for rel_path in include_paths:
-            cmd.append(str(scan_path / rel_path))
-    else:
-        cmd.append(str(scan_path))
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-            env=env,
-            timeout=600,
-        )
-    except FileNotFoundError as fnf_err:
-        logger.warning("Direct execution failed (%s), attempting python -m semgrep fallback", fnf_err)
-        cmd_fallback = [sys.executable, "-m", "semgrep", "scan", "--config=auto", "--json", "--json-output", str(result_file)]
-        if include_paths:
-            for rel_path in include_paths:
-                cmd_fallback.append(str(scan_path / rel_path))
-        else:
-            cmd_fallback.append(str(scan_path))
-
-        result = subprocess.run(
-            cmd_fallback,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-            env=env,
-            timeout=600,
-        )
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+        env=env,
+        timeout=600,
+    )
 
     if result_file.exists():
         with open(result_file, "r", encoding="utf-8") as fh:
@@ -300,8 +267,9 @@ def _run_semgrep(
             pass
 
     raise RuntimeError(
-        f"Semgrep produced no output file or invalid output. returncode={result.returncode}, stderr: {result.stderr or result.stdout}"
+        f"Semgrep failed. returncode={result.returncode}, stderr: {result.stderr or result.stdout}"
     )
+
 
 
 # ── Branch helpers ─────────────────────────────────────────────────────────────
