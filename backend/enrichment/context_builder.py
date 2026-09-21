@@ -4,6 +4,7 @@ from typing import Dict, Optional
 from backend.enrichment.snippet_extractor import SnippetExtractor
 from backend.enrichment.framework_detector import FrameworkDetector
 from backend.enrichment.endpoint_extractor import EndpointExtractor
+from backend.enrichment.reachability import ReachabilityAnalyzer
 
 
 class ContextBuilder:
@@ -24,6 +25,8 @@ class ContextBuilder:
         self.framework_detector = FrameworkDetector()
 
         self.endpoint_extractor = EndpointExtractor()
+
+        self.reachability_analyzer = ReachabilityAnalyzer()
 
     def build(
         self,
@@ -53,6 +56,10 @@ class ContextBuilder:
 
             file_path = normalized["path"]
 
+            resolved_file_path = Path(file_path)
+            if not resolved_file_path.is_absolute():
+                resolved_file_path = Path(project_path) / resolved_file_path
+
             line_number = normalized["line"]
 
             # =========================
@@ -68,7 +75,7 @@ class ContextBuilder:
             # =========================
 
             snippet_data = self.snippet_extractor.extract(
-                file_path=file_path,
+                file_path=str(resolved_file_path),
                 line_number=line_number
             )
 
@@ -81,8 +88,14 @@ class ContextBuilder:
             )
 
             related_endpoint = self._find_related_endpoint(
-                file_path=file_path,
+                file_path=str(resolved_file_path.resolve()),
                 endpoints=endpoints
+            )
+
+            reachability = self.reachability_analyzer.analyze(
+                project_path=project_path,
+                finding=normalized,
+                endpoints=endpoints,
             )
 
             # =========================
@@ -95,6 +108,8 @@ class ContextBuilder:
                 "framework": framework_data,
 
                 "endpoint": related_endpoint,
+
+                "reachability": reachability,
 
                 "snippet": snippet_data,
 
@@ -125,6 +140,13 @@ class ContextBuilder:
         Normalize raw Semgrep finding into
         internal platform schema.
         """
+
+        if "finding" in finding and isinstance(finding.get("finding"), dict):
+            normalized = dict(finding["finding"])
+            normalized.setdefault("scanner", finding.get("scanner", normalized.get("engine", "unknown")))
+            normalized.setdefault("line", 1)
+            normalized.setdefault("path", "")
+            return normalized
 
         return {
             "scanner": "semgrep",

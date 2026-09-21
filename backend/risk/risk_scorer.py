@@ -80,6 +80,8 @@ class RiskScorer:
                 {}
             )
 
+            reachability = enriched_finding.get("reachability", {})
+
             # =========================
             # Base Severity Score
             # =========================
@@ -121,6 +123,11 @@ class RiskScorer:
 
             if endpoint:
                 risk_score += 1.0
+
+            if reachability.get("status") == "reachable":
+                risk_score += 1.0
+            elif reachability.get("status") == "not_reachable":
+                risk_score -= 0.5
 
             # =========================
             # Framework Exposure
@@ -196,7 +203,8 @@ class RiskScorer:
                 "risk_score": risk_score,
                 "confidence": confidence,
                 "exploitability": exploitability,
-                "priority": priority
+                "priority": priority,
+                "reachability": reachability.get("status", "unknown"),
             }
 
         except Exception as error:
@@ -239,6 +247,12 @@ class RiskScorer:
 
         if finding.get("owasp"):
             score += 0.1
+
+        reachability = enriched_finding.get("reachability", {})
+        if reachability.get("status") == "reachable":
+            score += 0.15
+        elif reachability.get("status") == "not_reachable":
+            score -= 0.1
 
         return round(
             min(score, 1.0),
