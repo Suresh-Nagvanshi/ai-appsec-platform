@@ -146,68 +146,51 @@ def _update_scan(
 
 def _build_semgrep_cmd(result_file: Path, scan_target: str, include_paths: Optional[List[str]] = None) -> List[str]:
     """
-    Build the semgrep command list.
-
-    Strategy (cross-platform, works in Docker Linux containers):
-      1. Find the semgrep script via shutil.which / common paths.
-      2. ALWAYS invoke it as [sys.executable, semgrep_script, ...] — this
-         bypasses all OS shebang resolution issues that cause [Errno 2] on
-         Linux containers where the shebang interpreter path may not match.
-      3. If no semgrep file can be found at all, raise RuntimeError immediately.
+    Build the Semgrep invocation command, preferring `python -m semgrep`
+    over relying on PATH resolution, which is unreliable across local venvs
+    and Railway/Nixpacks build vs runtime environments.
     """
-    # Build candidate directories to search
-    py_dir = Path(sys.executable).parent
-    home = Path(os.path.expanduser("~"))
-    python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
+    base_cmd = [sys.executable, "-m", "semgrep"]
 
-    # Augment PATH so shutil.which covers user site-packages scripts
-    extra_dirs = [
-        str(py_dir),
-        str(py_dir / "Scripts"),
-        str(home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts"),
-        str(home / ".local" / "bin"),
-        "/usr/local/bin",
-        "/usr/bin",
-    ]
-    current_path = os.environ.get("PATH", "")
-    os.environ["PATH"] = os.pathsep.join(extra_dirs) + os.pathsep + current_path
+    # Sanity check: verify the semgrep module is actually importable in
+    # this interpreter before running, so we fail with a clear error
+    # instead of a cryptic subprocess FileNotFoundError.
+    check = subprocess.run(
+        [sys.executable, "-c", "import semgrep"],
+        capture_output=True,
+    )
+    if check.returncode != 0:
+        # Fallback: try PATH-resolved binary as last resort (covers cases
+        # where semgrep was installed via brew/system package, not pip)
+        py_dir = Path(sys.executable).parent
+        home = Path(os.path.expanduser("~"))
+        python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
 
-    # --- Find the semgrep script file ---
-    semgrep_script: Optional[str] = None
+        extra_dirs = [
+            str(py_dir),
+            str(py_dir / "Scripts"),
+            str(home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts"),
+            str(home / ".local" / "bin"),
+            "/usr/local/bin",
+            "/usr/bin",
+        ]
+        current_path = os.environ.get("PATH", "")
+        search_path = os.pathsep.join(extra_dirs) + os.pathsep + current_path
 
-    # 1. shutil.which searches the (now-augmented) PATH
-    for name in ("semgrep", "semgrep.exe", "semgrep.EXE"):
-        found = shutil.which(name)
-        if found and Path(found).exists():
-            semgrep_script = found
-            break
+        semgrep_bin = shutil.which("semgrep", path=search_path) or shutil.which("semgrep")
+        if semgrep_bin:
+            base_cmd = [semgrep_bin]
+        else:
+            raise RuntimeError(
+                "Semgrep is not installed in this Python environment and "
+                "no 'semgrep' executable was found on PATH. Verify "
+                "'semgrep' is present in backend/requirements.txt and that "
+                "the deployment's pip install step targets the same "
+                "interpreter used to run the FastAPI app "
+                f"(sys.executable={sys.executable})."
+            )
 
-    # 2. Hard-coded fallback paths (covers all common install locations)
-    if not semgrep_script:
-        for cand in [
-            py_dir / "semgrep",
-            py_dir / "semgrep.exe",
-            py_dir / "Scripts" / "semgrep",
-            py_dir / "Scripts" / "semgrep.exe",
-            home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep.exe",
-            home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep",
-            home / ".local" / "bin" / "semgrep",
-            Path("/usr/local/bin/semgrep"),
-            Path("/usr/bin/semgrep"),
-        ]:
-            if cand.exists():
-                semgrep_script = str(cand)
-                break
-
-    if not semgrep_script:
-        raise RuntimeError(
-            "Semgrep not found. Ensure 'semgrep' is listed in requirements.txt "
-            "and the Docker image was rebuilt after adding it."
-        )
-
-    # ALWAYS run via sys.executable — avoids [Errno 2] on Linux shebang scripts.
-    # On Windows this also works because .exe files just ignore the leading interpreter arg.
-    cmd = [sys.executable, semgrep_script, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
+    cmd = base_cmd + ["scan", "--config=auto", "--json", "--json-output", str(result_file)]
 
     if include_paths:
         for rel_path in include_paths:
