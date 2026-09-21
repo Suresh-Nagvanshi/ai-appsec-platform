@@ -146,26 +146,35 @@ def _update_scan(
 
 def _build_semgrep_cmd(result_file: Path, scan_target: str, include_paths: Optional[List[str]] = None) -> List[str]:
     """
-    Build the Semgrep invocation command, preferring `python -m semgrep`
-    over relying on PATH resolution, which is unreliable across local venvs
-    and Railway/Nixpacks build vs runtime environments.
+    Build the Semgrep invocation command.
+    
+    Finds the `semgrep` binary in the Python environment's binary directory
+    or PATH. Avoids `python -m semgrep` which is deprecated/disabled in Semgrep >= 1.38.0.
     """
-    base_cmd = [sys.executable, "-m", "semgrep"]
+    py_dir = Path(sys.executable).parent
+    home = Path(os.path.expanduser("~"))
+    python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
 
-    # Sanity check: verify the semgrep module is actually importable in
-    # this interpreter before running, so we fail with a clear error
-    # instead of a cryptic subprocess FileNotFoundError.
-    check = subprocess.run(
-        [sys.executable, "-c", "import semgrep"],
-        capture_output=True,
-    )
-    if check.returncode != 0:
-        # Fallback: try PATH-resolved binary as last resort (covers cases
-        # where semgrep was installed via brew/system package, not pip)
-        py_dir = Path(sys.executable).parent
-        home = Path(os.path.expanduser("~"))
-        python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
+    # Search candidates in priority order (Python bin/Scripts dir first)
+    candidates = [
+        py_dir / "semgrep",
+        py_dir / "semgrep.exe",
+        py_dir / "Scripts" / "semgrep",
+        py_dir / "Scripts" / "semgrep.exe",
+        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep.exe",
+        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep",
+        home / ".local" / "bin" / "semgrep",
+        Path("/usr/local/bin/semgrep"),
+        Path("/usr/bin/semgrep"),
+    ]
 
+    semgrep_bin: Optional[str] = None
+    for cand in candidates:
+        if cand.exists():
+            semgrep_bin = str(cand)
+            break
+
+    if not semgrep_bin:
         extra_dirs = [
             str(py_dir),
             str(py_dir / "Scripts"),
@@ -174,23 +183,16 @@ def _build_semgrep_cmd(result_file: Path, scan_target: str, include_paths: Optio
             "/usr/local/bin",
             "/usr/bin",
         ]
-        current_path = os.environ.get("PATH", "")
-        search_path = os.pathsep.join(extra_dirs) + os.pathsep + current_path
-
+        search_path = os.pathsep.join(extra_dirs) + os.pathsep + os.environ.get("PATH", "")
         semgrep_bin = shutil.which("semgrep", path=search_path) or shutil.which("semgrep")
-        if semgrep_bin:
-            base_cmd = [semgrep_bin]
-        else:
-            raise RuntimeError(
-                "Semgrep is not installed in this Python environment and "
-                "no 'semgrep' executable was found on PATH. Verify "
-                "'semgrep' is present in backend/requirements.txt and that "
-                "the deployment's pip install step targets the same "
-                "interpreter used to run the FastAPI app "
-                f"(sys.executable={sys.executable})."
-            )
 
-    cmd = base_cmd + ["scan", "--config=auto", "--json", "--json-output", str(result_file)]
+    if not semgrep_bin:
+        raise RuntimeError(
+            "Semgrep binary not found. Verify 'semgrep' is installed in the "
+            f"Python environment ({sys.executable})."
+        )
+
+    cmd = [semgrep_bin, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
 
     if include_paths:
         for rel_path in include_paths:
