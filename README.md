@@ -52,46 +52,7 @@ The platform is designed to help security and engineering teams move from **find
 The platform operates on a 6-tier pipeline, seamlessly routing data from the frontend to external integrations.
 
 ```text
-┌──────────────────────────────────────────────────────────┐
-│ 1. FRONTEND                                              │
-│    Next.js 16 | React 19 | Tailwind CSS 4                │
-│    (Security Dashboard, Triage Grid, Scan Logs)          │
-└────────────────────────────┬─────────────────────────────┘
-                             │  HTTP / REST
-                             v
-┌──────────────────────────────────────────────────────────┐
-│ 2. BACKEND API                                           │
-│    FastAPI | Python 3.11 | Uvicorn                       │
-│    (Auth, Rate Limiting, Request Orchestration)          │
-└────────────────────────────┬─────────────────────────────┘
-                             │  Context & Prompts
-                             v
-┌──────────────────────────────────────────────────────────┐
-│ 3. AI LAYER                                              │
-│    Groq (LLaMA) | LangChain | ChromaDB (RAG)           │
-│    (Contextual Analysis & Auto-Patch Generation)         │
-└────────────────────────────┬─────────────────────────────┘
-                             │  Enriched Rules & Probes
-                             v
-┌──────────────────────────────────────────────────────────┐
-│ 4. SECURITY ENGINES                                      │
-│    Semgrep (SAST) | Web Crawler | API Scanner            │
-│    Supply Chain (SCA) | Docker Exploit Sandbox           │
-└────────────────────────────┬─────────────────────────────┘
-                             │  Scan Output & State
-                             v
-┌──────────────────────────────────────────────────────────┐
-│ 5. DATABASE & STORAGE                                    │
-│    PostgreSQL / SQLite | Vector Store                    │
-│    (Findings, History, Security Knowledge Graph)         │
-└────────────────────────────┬─────────────────────────────┘
-                             │  Exports & Triggers
-                             v
-┌──────────────────────────────────────────────────────────┐
-│ 6. EXTERNAL INTEGRATIONS                                 │
-│    GitHub Security PRs | SARIF 2.1.0 | CI/CD Gates       │
-│    (HTML/PDF/JSON Reports, Pipeline Annotations)         │
-└──────────────────────────────────────────────────────────┘
+![1790020773645](image/README/1790020773645.png)
 ```
 
 ## Database Design

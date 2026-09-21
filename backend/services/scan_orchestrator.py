@@ -43,6 +43,7 @@ backend.api.scans so the polling endpoint sees live state.
 import asyncio
 import json
 import os
+import sys
 import shutil
 import subprocess
 import logging
@@ -76,6 +77,27 @@ for _d in (UPLOAD_DIR, EXTRACT_DIR, RESULT_DIR, REPO_DIR):
 
 
 # ── Tiny helpers ──────────────────────────────────────────────────────────────
+
+def _force_rmtree(path: Path) -> None:
+    """Recursively remove directory, clearing read-only attributes on Windows git files."""
+    if not path.exists():
+        return
+    import stat
+
+    def _remove_readonly(func, p):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+
+    try:
+        shutil.rmtree(path, onexc=lambda func, p, exc: _remove_readonly(func, p))
+    except TypeError:
+        shutil.rmtree(path, onerror=lambda func, p, exc_info: _remove_readonly(func, p))
+    except Exception:
+        pass
+
 
 def _now_str() -> str:
     return datetime.utcnow().strftime("%H:%M:%S")
@@ -124,6 +146,73 @@ def _update_scan(
 
 # ── Semgrep runner (sync, called via asyncio.to_thread) ───────────────────────
 
+def _ensure_path_environment() -> None:
+    """Ensure Python Scripts, user site-packages, and system binary folders are in os.environ['PATH']."""
+    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+    path_set = {os.path.normpath(p).lower() for p in path_dirs if p}
+
+    python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
+    home = Path(os.path.expanduser("~"))
+    py_dir = Path(sys.executable).parent
+
+    candidates = [
+        py_dir,
+        py_dir / "Scripts",
+        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts",
+        home / ".local" / "bin",
+        Path("/usr/local/bin"),
+        Path("/usr/bin"),
+        Path("/bin"),
+    ]
+
+    additions = []
+    for cand in candidates:
+        if cand.exists():
+            norm = os.path.normpath(str(cand)).lower()
+            if norm not in path_set:
+                additions.append(str(cand))
+                path_set.add(norm)
+
+    if additions:
+        os.environ["PATH"] = os.pathsep.join(additions) + os.pathsep + os.environ.get("PATH", "")
+
+
+def _find_semgrep_executable() -> str:
+    """Find the semgrep executable across PATH, Python Scripts, user directories, and system paths."""
+    _ensure_path_environment()
+
+    for name in ("semgrep", "semgrep.exe", "semgrep.EXE", "semgrep.cmd", "semgrep.bat"):
+        exe = shutil.which(name)
+        if exe and os.path.exists(exe):
+            return exe
+
+    py_dir = Path(sys.executable).parent
+    home = Path(os.path.expanduser("~"))
+    python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
+
+    candidates = [
+        py_dir / "semgrep.exe",
+        py_dir / "semgrep.EXE",
+        py_dir / "semgrep",
+        py_dir / "Scripts" / "semgrep.exe",
+        py_dir / "Scripts" / "semgrep.EXE",
+        py_dir / "Scripts" / "semgrep.cmd",
+        py_dir / "Scripts" / "semgrep",
+        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep.exe",
+        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep.EXE",
+        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts" / "semgrep",
+        home / ".local" / "bin" / "semgrep",
+        Path("/usr/local/bin/semgrep"),
+        Path("/usr/bin/semgrep"),
+    ]
+
+    for cand in candidates:
+        if cand.exists():
+            return str(cand)
+
+    raise RuntimeError("Semgrep executable not found; install semgrep and add it to PATH")
+
+
 def _run_semgrep(
     scan_path: Path,
     result_file: Path,
@@ -136,15 +225,20 @@ def _run_semgrep(
     Returns the parsed Semgrep results dict.
     Raises RuntimeError on failure.
     """
+    _ensure_path_environment()
     env = os.environ.copy()
     env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "LANG": "en_US.UTF-8"})
 
+    semgrep_executable = _find_semgrep_executable()
+
     cmd = [
-        "semgrep",
+        semgrep_executable,
+        "scan",
         "--config=auto",
         "--json",
-        "--output", str(result_file),
+        "--json-output", str(result_file),
     ]
+    logger.warning("Semgrep command: %r", cmd)
 
     if include_paths:
         # Scan only the changed files (relative paths from repo root)
@@ -163,13 +257,24 @@ def _run_semgrep(
         timeout=600,
     )
 
-    if not result_file.exists():
-        raise RuntimeError(
-            f"Semgrep produced no output file. stderr: {result.stderr}"
-        )
+    if result_file.exists():
+        with open(result_file, "r", encoding="utf-8") as fh:
+            try:
+                return json.load(fh)
+            except json.JSONDecodeError:
+                pass
 
-    with open(result_file, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    if result.stdout and result.stdout.strip().startswith("{"):
+        try:
+            parsed = json.loads(result.stdout)
+            result_file.write_text(result.stdout, encoding="utf-8")
+            return parsed
+        except json.JSONDecodeError:
+            pass
+
+    raise RuntimeError(
+        f"Semgrep produced no output file or invalid output. returncode={result.returncode}, stderr: {result.stderr or result.stdout}"
+    )
 
 
 # ── Branch helpers ─────────────────────────────────────────────────────────────
@@ -384,7 +489,7 @@ async def run_github_scan(
                      log_message=f"Cloning repository: {repo_name}")
 
         if repo_path.exists():
-            shutil.rmtree(repo_path, ignore_errors=True)
+            _force_rmtree(repo_path)
 
         repo_obj = await asyncio.to_thread(Repo.clone_from, repo_url, repo_path)
 
@@ -574,11 +679,20 @@ async def run_zip_scan(scan_id: str, zip_bytes: bytes, filename: str) -> None:
             member_count = 0
             for member in zf.namelist():
                 member_count += 1
-                total_size += zf.getinfo(member).file_size
-                try:
-                    (extract_root / member).resolve().relative_to(extract_root)
-                except ValueError:
-                    raise ValueError(f"Unsafe ZIP entry detected: {member}")
+                info = zf.getinfo(member)
+                total_size += info.file_size
+
+                # Basic path traversal check: ensure the resolved path is still within extract_root
+                resolved_path = (extract_root / member).resolve()
+                if not resolved_path.is_relative_to(extract_root):
+                    raise ValueError(f"Unsafe ZIP entry detected (path traversal): {member}")
+
+                # More robust checks against symbolic links and other special files
+                # Note: zipfile.extractall does not follow symlinks by default in Python 3.6+
+                # but it's good to be explicit for defense-in-depth.
+                if info.is_sym() or info.external_attr >> 16 == 0o120000:  # S_IFLNK
+                    raise ValueError(f"Unsafe ZIP entry detected (symbolic link): {member}")
+
                 if member_count > 10_000 or total_size > 500 * 1024 * 1024:
                     raise ValueError("ZIP extraction exceeds the safety limits")
             zf.extractall(extract_path)

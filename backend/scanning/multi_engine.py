@@ -186,7 +186,40 @@ def _command_for(engine: str, scan_path: Path, output_path: Path) -> Optional[li
     return None
 
 
+def _ensure_path_environment() -> None:
+    """Ensure Python Scripts, user site-packages, and system binary folders are in os.environ['PATH']."""
+    import sys
+    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+    path_set = {os.path.normpath(p).lower() for p in path_dirs if p}
+
+    python_ver = f"Python{sys.version_info.major}{sys.version_info.minor}"
+    home = Path(os.path.expanduser("~"))
+    py_dir = Path(sys.executable).parent
+
+    candidates = [
+        py_dir,
+        py_dir / "Scripts",
+        home / "AppData" / "Roaming" / "Python" / python_ver / "Scripts",
+        home / ".local" / "bin",
+        Path("/usr/local/bin"),
+        Path("/usr/bin"),
+        Path("/bin"),
+    ]
+
+    additions = []
+    for cand in candidates:
+        if cand.exists():
+            norm = os.path.normpath(str(cand)).lower()
+            if norm not in path_set:
+                additions.append(str(cand))
+                path_set.add(norm)
+
+    if additions:
+        os.environ["PATH"] = os.pathsep.join(additions) + os.pathsep + os.environ.get("PATH", "")
+
+
 def _run_optional_engine(engine: str, scan_path: Path, work_dir: Path) -> tuple[list[dict], str]:
+    _ensure_path_environment()
     executable = "npm" if engine == "npm-audit" else engine
     if not shutil.which(executable):
         return [], "unavailable"
