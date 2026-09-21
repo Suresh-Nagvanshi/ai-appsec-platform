@@ -231,13 +231,21 @@ def _run_semgrep(
 
     semgrep_executable = _find_semgrep_executable()
 
-    cmd = [
-        semgrep_executable,
-        "scan",
-        "--config=auto",
-        "--json",
-        "--json-output", str(result_file),
-    ]
+    # Check if semgrep_executable is a shebang python script (common in virtualenvs)
+    is_shebang = False
+    if os.path.isfile(semgrep_executable):
+        try:
+            with open(semgrep_executable, "rb") as f:
+                if f.read(2) == b"#!":
+                    is_shebang = True
+        except Exception:
+            pass
+
+    if is_shebang:
+        cmd = [sys.executable, semgrep_executable, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
+    else:
+        cmd = [semgrep_executable, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
+
     logger.warning("Semgrep command: %r", cmd)
 
     if include_paths:
@@ -247,15 +255,34 @@ def _run_semgrep(
     else:
         cmd.append(str(scan_path))
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="ignore",
-        env=env,
-        timeout=600,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            env=env,
+            timeout=600,
+        )
+    except FileNotFoundError as fnf_err:
+        logger.warning("Direct execution failed (%s), attempting python -m semgrep fallback", fnf_err)
+        cmd_fallback = [sys.executable, "-m", "semgrep", "scan", "--config=auto", "--json", "--json-output", str(result_file)]
+        if include_paths:
+            for rel_path in include_paths:
+                cmd_fallback.append(str(scan_path / rel_path))
+        else:
+            cmd_fallback.append(str(scan_path))
+
+        result = subprocess.run(
+            cmd_fallback,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            env=env,
+            timeout=600,
+        )
 
     if result_file.exists():
         with open(result_file, "r", encoding="utf-8") as fh:
