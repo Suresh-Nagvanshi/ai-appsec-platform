@@ -1,0 +1,180 @@
+{
+  "ae838d77-a24d-4926-b5a5-2a827abb90c7": {
+    "id": "ae838d77-a24d-4926-b5a5-2a827abb90c7",
+    "scanType": "website",
+    "target": "https://example.com",
+    "max_pages": 3,
+    "max_depth": 1,
+    "status": "COMPLETED",
+    "progress": 100,
+    "startedAt": "2026-09-21T07:19:56Z",
+    "completedAt": "2026-09-21T07:19:59Z",
+    "duration": "3s",
+    "pagesScanned": 1,
+    "findingsCount": 7,
+    "criticalCount": 0,
+    "summary": {
+      "critical": 0,
+      "high": 2,
+      "medium": 2,
+      "low": 3
+    },
+    "logs": [
+      {
+        "id": "6e92bc70-ce85-4570-85ac-12814e81ea2e",
+        "time": "07:19:56",
+        "level": "INFO",
+        "message": "Starting website security scan for https://example.com"
+      },
+      {
+        "id": "e9907df6-056d-434e-aabc-cce7b6df1b56",
+        "time": "07:19:56",
+        "level": "INFO",
+        "message": "Initialising crawl engine (max_pages=3, max_depth=1)"
+      },
+      {
+        "id": "93456301-1782-4215-8c68-aabbfb761300",
+        "time": "07:19:56",
+        "level": "INFO",
+        "message": "Starting BFS crawl..."
+      },
+      {
+        "id": "cfa178a3-4583-418f-bc48-531efcc2c4e6",
+        "time": "07:19:59",
+        "level": "INFO",
+        "message": "Scanning [200] https://example.com"
+      },
+      {
+        "id": "8dcc34a1-dbc1-4d66-a276-c7289ae9dc29",
+        "time": "07:19:59",
+        "level": "INFO",
+        "message": "Crawl complete — 7 raw findings"
+      },
+      {
+        "id": "2fd8807b-988a-4e77-90a0-6d22c9d8354b",
+        "time": "07:19:59",
+        "level": "INFO",
+        "message": "Header analysis complete"
+      },
+      {
+        "id": "50301783-01a8-4931-84c3-99da2e3465b4",
+        "time": "07:19:59",
+        "level": "INFO",
+        "message": "Client-side analysis complete"
+      },
+      {
+        "id": "cb1c4eb3-8388-441d-be01-641434567432",
+        "time": "07:19:59",
+        "level": "INFO",
+        "message": "Scan complete — 7 unique findings"
+      }
+    ],
+    "timeline": [
+      {
+        "id": "0",
+        "name": "Validate & Init",
+        "status": "COMPLETED"
+      },
+      {
+        "id": "1",
+        "name": "Crawl Pages",
+        "status": "COMPLETED"
+      },
+      {
+        "id": "2",
+        "name": "Header Analysis",
+        "status": "COMPLETED"
+      },
+      {
+        "id": "3",
+        "name": "Client-Side Analysis",
+        "status": "COMPLETED"
+      },
+      {
+        "id": "4",
+        "name": "Persist Results",
+        "status": "COMPLETED"
+      }
+    ],
+    "failureReason": null,
+    "findings": [
+      {
+        "id": "8543eea2-b5a1-417e-97cb-8f1095fe2386",
+        "url": "https://example.com",
+        "severity": "HIGH",
+        "category": "Security Headers",
+        "title": "Missing Strict-Transport-Security",
+        "description": "Missing HSTS header; site is vulnerable to protocol downgrade attacks.",
+        "evidence": null,
+        "recommendation": "Add the Strict-Transport-Security HTTP response header.",
+        "discovered_at": "2026-09-21T07:19:59Z"
+      },
+      {
+        "id": "38cb81f7-270c-4e61-9899-d2520dc1f33b",
+        "url": "https://example.com",
+        "severity": "HIGH",
+        "category": "Security Headers",
+        "title": "Missing Content-Security-Policy",
+        "description": "Missing Content-Security-Policy; XSS mitigations are not in place.",
+        "evidence": null,
+        "recommendation": "Add the Content-Security-Policy HTTP response header.",
+        "discovered_at": "2026-09-21T07:19:59Z"
+      },
+      {
+        "id": "da8fd2c6-cc20-46e7-b3ff-13b6718cdaba",
+        "url": "https://example.com",
+        "severity": "MEDIUM",
+        "category": "Security Headers",
+        "title": "Missing X-Frame-Options",
+        "description": "Missing X-Frame-Options; page may be vulnerable to clickjacking.",
+        "evidence": null,
+        "recommendation": "Add the X-Frame-Options HTTP response header.",
+        "discovered_at": "2026-09-21T07:19:59Z"
+      },
+      {
+        "id": "46e7f8fc-cc11-4aad-8cd9-06bf89eda61a",
+        "url": "https://example.com",
+        "severity": "MEDIUM",
+        "category": "Security Headers",
+        "title": "Missing X-Content-Type-Options",
+        "description": "Missing X-Content-Type-Options: nosniff; MIME sniffing attacks possible.",
+        "evidence": null,
+        "recommendation": "Add the X-Content-Type-Options HTTP response header.",
+        "discovered_at": "2026-09-21T07:19:59Z"
+      },
+      {
+        "id": "443d06de-dcc0-450a-8ef5-a83dc68a392e",
+        "url": "https://example.com",
+        "severity": "LOW",
+        "category": "Security Headers",
+        "title": "Missing Referrer-Policy",
+        "description": "Missing Referrer-Policy; sensitive URL information may leak to third parties.",
+        "evidence": null,
+        "recommendation": "Add the Referrer-Policy HTTP response header.",
+        "discovered_at": "2026-09-21T07:19:59Z"
+      },
+      {
+        "id": "1383a817-29c9-426b-b2de-e6c760a2296d",
+        "url": "https://example.com",
+        "severity": "LOW",
+        "category": "Security Headers",
+        "title": "Missing Permissions-Policy",
+        "description": "Missing Permissions-Policy; browser feature access is unrestricted.",
+        "evidence": null,
+        "recommendation": "Add the Permissions-Policy HTTP response header.",
+        "discovered_at": "2026-09-21T07:19:59Z"
+      },
+      {
+        "id": "27157d8d-c960-4cdb-90d6-5c9db6b4c9a8",
+        "url": "https://example.com",
+        "severity": "LOW",
+        "category": "Information Disclosure",
+        "title": "Server Header Discloses Version",
+        "description": "The Server header reveals software version information.",
+        "evidence": "Server: cloudflare",
+        "recommendation": "Configure the web server to suppress or genericise the Server header.",
+        "discovered_at": "2026-09-21T07:19:59Z"
+      }
+    ]
+  }
+}
