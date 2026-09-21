@@ -192,7 +192,8 @@ def _build_semgrep_cmd(result_file: Path, scan_target: str, include_paths: Optio
             f"Python environment ({sys.executable})."
         )
 
-    cmd = [semgrep_bin, "scan", "--config=auto", "--json", "--json-output", str(result_file)]
+    # Restrict Semgrep to 1 worker job and 300MB RAM cap to prevent Railway OOM kills
+    cmd = [semgrep_bin, "scan", "--config=auto", "--jobs", "1", "--max-memory", "300", "--json", "--json-output", str(result_file)]
 
     if include_paths:
         for rel_path in include_paths:
